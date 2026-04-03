@@ -1,0 +1,22 @@
+[project]
+name = "pubg-gun-control"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pillow>=12.1.1",
+    "pynput>=1.8.1",
+    "pystray>=0.19.5",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pubg_gun_control"]
+
+[tool.uv]
+package = true
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.19.0",
+]
