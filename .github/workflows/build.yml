@@ -40,14 +40,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: PUBG-Gun-Control-Windows
-          path: dist/PUBG-Gun-Control
+          path: dist/PUBG-Gun-Control.exe
           retention-days: 30
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/PUBG-Gun-Control/**
+          files: dist/PUBG-Gun-Control.exe
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
