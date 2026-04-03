@@ -32,7 +32,7 @@ jobs:
 
       - name: Build with PyInstaller
         run: |
-          pyinstaller pubg_gun_control.spec --clean
+          uv run pyinstaller pubg_gun_control.spec --clean
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
