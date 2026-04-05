@@ -7,6 +7,7 @@ A weapon switch display tool for PUBG, designed to work with Logitech G HUB reco
 ## Features
 
 - Floating window display in upper-left corner (white background, red text, always on top)
+- Mouse click-through overlay, no interference with game operations
 - Multiple weapon switch combinations
 - Caps Lock key controls recoil mode on/off
 - Works with Logitech G HUB recoil macros
@@ -175,6 +176,12 @@ class InputListener:
 ```
 
 You also need to sync modify the `G_bind` configuration in `1.2.2-2024.5.20.-GHUB.-github.lua`.
+
+## Changelog
+
+### v1.0.6 (2026-04-06)
+- Fix: Overlay window now supports mouse click-through, no longer interfering with game operations
+- Optimize: Overlay only serves as a display, keyboard and mouse events pass through to the window below
 
 ## Disclaimer
 
