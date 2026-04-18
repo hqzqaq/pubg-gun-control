@@ -100,7 +100,7 @@ def main():
     print("    LAlt + 鼠标后退键 = UMP5")
     print("    LCtrl + 鼠标前进键 = M416")
     print("    LCtrl + 鼠标后退键 = ACE32")
-    print("    LShift + 鼠标前进键 = SCAR-L")
+    print("    LShift + 鼠标前进键 = Beryl M762")
     print("    LShift + 鼠标后退键 = AUG")
     print("  - 大写锁定关闭时：显示 '无'")
     print("  - 按 G/3/4/5 或 Tab 键取消压枪模式")
