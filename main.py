@@ -10,8 +10,10 @@ import sys
 import threading
 import time
 
+from pubg_gun_control.config_manager import load_config, save_config
 from pubg_gun_control.input_listener import InputListener
 from pubg_gun_control.overlay_window import OverlayWindow
+from pubg_gun_control.settings_window import SettingsWindow
 from pubg_gun_control.tray_icon import TrayIcon
 
 
@@ -25,6 +27,7 @@ class GunControlApp:
         self.tray_icon: TrayIcon | None = None
         self._running = False
         self._lock = threading.Lock()
+        self._shortcuts: list[dict[str, str]] = load_config()
 
     def _on_gun_selected(self, gun_name: str):
         """
@@ -54,6 +57,23 @@ class GunControlApp:
         """退出回调函数"""
         self.stop()
 
+    def _on_settings(self):
+        """设置菜单点击回调（在pystray后台线程中调用）"""
+        if self.overlay.root:
+            self.overlay.root.after(0, self._open_settings)
+
+    def _open_settings(self):
+        """在tkinter主线程中打开设置窗口"""
+        SettingsWindow(self.overlay.root, self._shortcuts, self._on_settings_saved)
+
+    def _on_settings_saved(self, shortcuts: list[dict[str, str]]):
+        """设置保存回调"""
+        self._shortcuts = shortcuts
+        save_config(shortcuts)
+        if self.input_listener:
+            self.input_listener.update_shortcuts(shortcuts)
+        print("设置已保存")
+
     def start(self):
         """启动应用"""
         self._running = True
@@ -62,11 +82,10 @@ class GunControlApp:
         self.overlay.create()
 
         # 创建输入监听器
-        self.input_listener = InputListener(self._on_gun_selected, self._on_lock_changed)
+        self.input_listener = InputListener(self._on_gun_selected, self._on_lock_changed, self._shortcuts)
         self.input_listener.start()
 
-        # 创建系统托盘图标
-        self.tray_icon = TrayIcon(self._on_exit)
+        self.tray_icon = TrayIcon(self._on_exit, self._on_settings)
         self.tray_icon.start()
 
         # 启动浮窗主循环

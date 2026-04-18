@@ -1,0 +1,34 @@
+{
+  "shortcuts": [
+    {
+      "modifier": "alt",
+      "mouse_button": "forward",
+      "text": "MP5k"
+    },
+    {
+      "modifier": "alt",
+      "mouse_button": "backward",
+      "text": "UMP5"
+    },
+    {
+      "modifier": "ctrl",
+      "mouse_button": "forward",
+      "text": "M416"
+    },
+    {
+      "modifier": "ctrl",
+      "mouse_button": "backward",
+      "text": "ACE32"
+    },
+    {
+      "modifier": "shift",
+      "mouse_button": "forward",
+      "text": "Beryl M762"
+    },
+    {
+      "modifier": "shift",
+      "mouse_button": "backward",
+      "text": "AUG"
+    }
+  ]
+}

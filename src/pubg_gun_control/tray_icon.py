@@ -16,14 +16,16 @@ from PIL import Image, ImageDraw
 class TrayIcon:
     """系统托盘图标管理器"""
 
-    def __init__(self, on_exit: Callable[[], None]):
+    def __init__(self, on_exit: Callable[[], None], on_settings: Callable[[], None] | None = None):
         """
         初始化系统托盘图标
 
         Args:
             on_exit: 退出回调函数
+            on_settings: 设置回调函数
         """
         self.on_exit = on_exit
+        self.on_settings = on_settings
         self.icon: Optional[pystray.Icon] = None
         self._running = False
 
@@ -55,11 +57,19 @@ class TrayIcon:
         self.stop()
         self.on_exit()
 
+    def _on_settings_clicked(self, icon: pystray.Icon):
+        """设置菜单项点击处理"""
+        if self.on_settings:
+            self.on_settings()
+
     def start(self):
         """启动系统托盘图标"""
-        menu = pystray.Menu(
-            pystray.MenuItem("退出", self._on_exit_clicked)
-        )
+        menu_items = [
+            pystray.MenuItem("设置", self._on_settings_clicked),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("退出", self._on_exit_clicked),
+        ]
+        menu = pystray.Menu(*menu_items)
 
         self.icon = pystray.Icon(
             "pubg-gun-control",

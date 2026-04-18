@@ -18,45 +18,56 @@ from pynput.mouse import Button
 class InputListener:
     """输入监听器，监听键盘和鼠标组合键"""
 
-    # 鼠标侧键映射
-    MOUSE_FORWARD = Button.x2  # 前进侧键
-    MOUSE_BACKWARD = Button.x1  # 后退侧键
-
-    # 默认压枪枪械
+    MOUSE_FORWARD = Button.x2
+    MOUSE_BACKWARD = Button.x1
     DEFAULT_GUN = "UMP5"
 
-    def __init__(self, callback: Callable[[str], None], lock_callback: Optional[Callable[[bool], None]] = None):
+    _BUTTON_MAP: dict[str, Button] = {
+        "forward": Button.x2,
+        "backward": Button.x1,
+    }
+
+    def __init__(self, callback: Callable[[str], None], lock_callback: Optional[Callable[[bool], None]] = None, shortcuts: Optional[list[dict[str, str]]] = None):
         """
         初始化输入监听器
 
         Args:
             callback: 当检测到有效组合键时的回调函数，参数为要显示的枪械名称
             lock_callback: 锁定状态变化时的回调函数，参数为锁定状态
+            shortcuts: 快捷键配置列表，每项包含 modifier、mouse_button、text
         """
         self.callback = callback
         self.lock_callback = lock_callback
         self.keyboard_listener: Optional[keyboard.Listener] = None
         self.mouse_listener: Optional[mouse.Listener] = None
 
-        # 修饰键状态
         self.alt_pressed = False
         self.ctrl_pressed = False
         self.shift_pressed = False
 
-        # 当前显示的文本
         self.current_text: str = "无"
-
-        # 压枪模式是否开启
         self.aim_mode_enabled: bool = False
-
-        # 上次使用的枪械名称（用于压枪模式恢复）
         self.last_gun_name: str = self.DEFAULT_GUN
-
-        # 标志：是否正在通过程序关闭大写锁定
         self._turning_off_caps_lock = False
-
-        # 锁定状态
         self.locked: bool = False
+
+        self._gun_map: dict[tuple[str, str], str] = {}
+        self._build_gun_map(shortcuts)
+
+    def _build_gun_map(self, shortcuts: Optional[list[dict[str, str]]]) -> None:
+        if not shortcuts:
+            from pubg_gun_control.config_manager import get_default_config
+            shortcuts = get_default_config()
+        self._gun_map = {
+            (s["modifier"], s["mouse_button"]): s["text"] for s in shortcuts
+        }
+        if self._gun_map:
+            first_text = next(iter(self._gun_map.values()))
+            self.last_gun_name = first_text
+            self.DEFAULT_GUN = first_text
+
+    def update_shortcuts(self, shortcuts: list[dict[str, str]]) -> None:
+        self._build_gun_map(shortcuts)
 
     def is_caps_lock_on(self) -> bool:
         """
@@ -184,42 +195,28 @@ class InputListener:
             self.callback(self.current_text)
 
     def _get_gun_name(self, button: Button) -> Optional[str]:
-        """
-        根据当前修饰键状态和鼠标按钮获取枪械名称
-
-        Args:
-            button: 鼠标按钮
-
-        Returns:
-            枪械名称，如果没有匹配的组合键则返回 None
-        """
-        # 检查是否只有一个修饰键被按下
         modifier_count = sum([self.alt_pressed, self.ctrl_pressed, self.shift_pressed])
         if modifier_count != 1:
             return None
 
-        # LAlt + 鼠标侧键
+        modifier = ""
         if self.alt_pressed:
-            if button == self.MOUSE_FORWARD:
-                return "MP5k"
-            elif button == self.MOUSE_BACKWARD:
-                return "UMP5"
-
-        # LCtrl + 鼠标侧键
+            modifier = "alt"
         elif self.ctrl_pressed:
-            if button == self.MOUSE_FORWARD:
-                return "M416"
-            elif button == self.MOUSE_BACKWARD:
-                return "ACE32"
-
-        # LShift + 鼠标侧键
+            modifier = "ctrl"
         elif self.shift_pressed:
-            if button == self.MOUSE_FORWARD:
-                return "Beryl M762"
-            elif button == self.MOUSE_BACKWARD:
-                return "AUG"
+            modifier = "shift"
 
-        return None
+        mouse_btn = None
+        for name, btn in self._BUTTON_MAP.items():
+            if button == btn:
+                mouse_btn = name
+                break
+
+        if mouse_btn is None:
+            return None
+
+        return self._gun_map.get((modifier, mouse_btn))
 
     def start(self):
         """启动监听器"""
