@@ -52,7 +52,7 @@ This is because the game runs at a higher privilege level, and input monitoring 
 | LAlt + Mouse Back Button      | UMP5   |
 | LCtrl + Mouse Forward Button  | M416   |
 | LCtrl + Mouse Back Button     | ACE32  |
-| LShift + Mouse Forward Button | SCAR-L |
+| LShift + Mouse Forward Button | Beryl M762 |
 | LShift + Mouse Back Button    | AUG    |
 
 ### Recoil Mode Control
@@ -86,7 +86,7 @@ The `G_bind` configuration in the lua script has the following mappings:
 
 -- LShift + G key weapon switch
 ["lshift + G4"] = "AUG"    -- Left Shift + Mouse back button = AUG recoil
-["lshift + G5"] = "SCAR-L" -- Left Shift + Mouse forward button = SCAR-L recoil
+["lshift + G5"] = "Beryl M762" -- Left Shift + Mouse forward button = Beryl M762 recoil
 ```
 
 ### G HUB Setup Instructions

@@ -25,14 +25,16 @@ class InputListener:
     # 默认压枪枪械
     DEFAULT_GUN = "UMP5"
 
-    def __init__(self, callback: Callable[[str], None]):
+    def __init__(self, callback: Callable[[str], None], lock_callback: Optional[Callable[[bool], None]] = None):
         """
         初始化输入监听器
 
         Args:
             callback: 当检测到有效组合键时的回调函数，参数为要显示的枪械名称
+            lock_callback: 锁定状态变化时的回调函数，参数为锁定状态
         """
         self.callback = callback
+        self.lock_callback = lock_callback
         self.keyboard_listener: Optional[keyboard.Listener] = None
         self.mouse_listener: Optional[mouse.Listener] = None
 
@@ -52,6 +54,9 @@ class InputListener:
 
         # 标志：是否正在通过程序关闭大写锁定
         self._turning_off_caps_lock = False
+
+        # 锁定状态
+        self.locked: bool = False
 
     def is_caps_lock_on(self) -> bool:
         """
@@ -79,13 +84,34 @@ class InputListener:
         self.current_text = "无"
         self.callback(self.current_text)
 
+    def _toggle_lock(self):
+        """切换锁定状态"""
+        self.locked = not self.locked
+        if self.lock_callback:
+            self.lock_callback(self.locked)
+
+    def is_locked(self) -> bool:
+        """
+        获取当前锁定状态
+
+        Returns:
+            True 如果处于锁定状态，否则 False
+        """
+        return self.locked
+
     def _on_key_press(self, key):
         """键盘按下事件处理"""
         try:
             if key == Key.alt_l or key == Key.alt:
                 self.alt_pressed = True
+                # 检测 Ctrl + Alt 组合键
+                if self.ctrl_pressed:
+                    self._toggle_lock()
             elif key == Key.ctrl_l or key == Key.ctrl:
                 self.ctrl_pressed = True
+                # 检测 Ctrl + Alt 组合键
+                if self.alt_pressed:
+                    self._toggle_lock()
             elif key == Key.shift_l or key == Key.shift:
                 self.shift_pressed = True
             elif key == Key.caps_lock:
@@ -147,6 +173,10 @@ class InputListener:
             self.callback(self.current_text)
             return
 
+        # 如果处于锁定状态，忽略枪械切换
+        if self.locked:
+            return
+
         # 检测组合键并触发回调
         gun_name = self._get_gun_name(button)
         if gun_name:
@@ -185,7 +215,7 @@ class InputListener:
         # LShift + 鼠标侧键
         elif self.shift_pressed:
             if button == self.MOUSE_FORWARD:
-                return "SCAR-L"
+                return "Beryl M762"
             elif button == self.MOUSE_BACKWARD:
                 return "AUG"
 

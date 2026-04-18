@@ -52,7 +52,7 @@
 | LAlt + 鼠标后退侧键   | UMP5   |
 | LCtrl + 鼠标前进侧键  | M416   |
 | LCtrl + 鼠标后退键   | ACE32  |
-| LShift + 鼠标前进侧键 | SCAR-L |
+| LShift + 鼠标前进侧键 | Beryl M762 |
 | LShift + 鼠标后退侧键 | AUG    |
 
 ### 压枪模式控制
@@ -86,7 +86,7 @@ lua脚本中的 `G_bind` 配置了以下映射关系：
 
 -- LShift + G键 切换枪械
 ["lshift + G4"] = "AUG"    -- 左Shift + 鼠标侧键后退 = AUG压枪
-["lshift + G5"] = "SCAR-L" -- 左Shift + 鼠标侧键前进 = SCAR-L压枪
+["lshift + G5"] = "Beryl M762" -- 左Shift + 鼠标侧键前进 = Beryl M762压枪
 ```
 
 ### G HUB设置方法

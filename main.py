@@ -37,6 +37,19 @@ class GunControlApp:
             if self.overlay.is_created():
                 self.overlay.update_text(gun_name)
 
+    def _on_lock_changed(self, locked: bool):
+        """
+        锁定状态变化回调函数
+
+        Args:
+            locked: 当前是否处于锁定状态
+        """
+        with self._lock:
+            if self.overlay.is_created():
+                self.overlay.set_locked(locked)
+            status = "已锁定" if locked else "已解锁"
+            print(f"枪械切换{status}")
+
     def _on_exit(self):
         """退出回调函数"""
         self.stop()
@@ -49,7 +62,7 @@ class GunControlApp:
         self.overlay.create()
 
         # 创建输入监听器
-        self.input_listener = InputListener(self._on_gun_selected)
+        self.input_listener = InputListener(self._on_gun_selected, self._on_lock_changed)
         self.input_listener.start()
 
         # 创建系统托盘图标
@@ -91,6 +104,7 @@ def main():
     print("    LShift + 鼠标后退键 = AUG")
     print("  - 大写锁定关闭时：显示 '无'")
     print("  - 按 G/3/4/5 或 Tab 键取消压枪模式")
+    print("  - Ctrl + Alt = 锁定/解锁当前枪械（锁定后无法切换，窗口变黄色）")
     print("  - 右键点击托盘图标可退出程序")
     print()
 

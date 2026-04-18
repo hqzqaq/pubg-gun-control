@@ -134,7 +134,7 @@ userInfo = {
 		-- lshift + G
 		["lshift + G3"] = "",
 		["lshift + G4"] = "AUG",
-		["lshift + G5"] = "SCAR-L",
+		["lshift + G5"] = "Beryl M762",
 		["lshift + G6"] = "",
 		["lshift + G7"] = "",
 		["lshift + G8"] = "",

@@ -28,6 +28,7 @@ class OverlayWindow:
         self.root: Optional[tk.Tk] = None
         self.label: Optional[tk.Label] = None
         self.current_text: str = ""
+        self.locked: bool = False
         self._setup_windows_api()
 
     def _setup_windows_api(self):
@@ -89,6 +90,42 @@ class OverlayWindow:
         # 设置窗口背景为白色
         self.root.configure(bg="white")
 
+    def set_locked(self, locked: bool):
+        """
+        设置锁定状态
+
+        Args:
+            locked: 是否锁定
+        """
+        if self.locked == locked:
+            return
+
+        self.locked = locked
+
+        if self.root is None or self.label is None:
+            return
+
+        # 根据锁定状态更新窗口样式
+        if self.locked:
+            # 锁定状态：黄色背景，红色文字
+            self.root.configure(bg="#FFD700")
+            self.label.config(bg="#FFD700", fg="#8B0000")
+        else:
+            # 非锁定状态：白色背景，红色文字
+            self.root.configure(bg="white")
+            self.label.config(bg="white", fg="red")
+
+        # 刷新显示文本
+        self._refresh_display()
+
+    def _refresh_display(self):
+        """刷新当前文本显示"""
+        if self.label is None:
+            return
+
+        self.label.config(text=self.current_text)
+        self.root.update()
+
     def update_text(self, text: str):
         """
         更新显示的文本
@@ -101,8 +138,7 @@ class OverlayWindow:
 
         if text != self.current_text:
             self.current_text = text
-            self.label.config(text=text)
-            self.root.update()
+            self._refresh_display()
 
     def show(self):
         """显示浮窗"""
