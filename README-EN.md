@@ -10,6 +10,9 @@ A weapon switch display tool for PUBG, designed to work with Logitech G HUB reco
 - Mouse click-through overlay, no interference with game operations
 - Multiple weapon switch combinations
 - Caps Lock key controls recoil mode on/off
+- **Weapon Lock Feature**: Ctrl + Alt toggles lock/unlock weapon switching, overlay turns yellow when locked
+- **Visual Shortcut Configuration**: Open settings window via system tray menu to modify shortcut display text
+- **Config File Support**: Shortcuts saved in config.json with persistent storage
 - Works with Logitech G HUB recoil macros
 - `1.2.2-2024.5.20.-GHUB.-github.lua` is the recoil script, needs to be imported into G HUB, tutorials available on Bilibili etc.
 - `Mouse shortcuts are consistent with the recoil script. If you need to change shortcuts, weapon configurations, or recoil trajectory parameters, you can modify them yourself, AI can help with modifications`
@@ -64,6 +67,7 @@ This is because the game runs at a higher privilege level, and input monitoring 
 | Press G / 3 / 4 / 5 keys                        | Cancel recoil mode, show "None"                |
 | Press Tab key                                   | Cancel recoil mode, show "None"                |
 | Caps Lock OFF                                   | Show "None"                                    |
+| Press Ctrl + Alt                                | Lock/Unlock weapon switching (overlay turns yellow when locked) |
 
 ## Using with Logitech G HUB
 
@@ -120,10 +124,13 @@ Resolution: 1080P
 pubg-gun-control/
 ├── src/pubg_gun_control/
 │   ├── __init__.py
+│   ├── config_manager.py   # Configuration manager module
 │   ├── input_listener.py   # Input listener module
 │   ├── overlay_window.py   # Overlay window module
+│   ├── settings_window.py  # Settings window module
 │   └── tray_icon.py        # System tray module
 ├── main.py                 # Main program entry
+├── config.json             # Shortcut configuration file
 ├── pubg_gun_control.spec   # PyInstaller build config
 └── pyproject.toml          # Project config
 ```
@@ -167,17 +174,47 @@ git push origin v1.0.0
 
 ## Configuration
 
-To change the default recoil weapon, edit `src/pubg_gun_control/input_listener.py`:
+### Shortcut Configuration
+
+Shortcut configurations are saved in the `config.json` file with the following format:
+
+```json
+{
+  "shortcuts": [
+    {"modifier": "alt", "mouse_button": "forward", "text": "MP5k"},
+    {"modifier": "alt", "mouse_button": "backward", "text": "UMP5"},
+    {"modifier": "ctrl", "mouse_button": "forward", "text": "M416"},
+    {"modifier": "ctrl", "mouse_button": "backward", "text": "ACE32"},
+    {"modifier": "shift", "mouse_button": "forward", "text": "Beryl M762"},
+    {"modifier": "shift", "mouse_button": "backward", "text": "AUG"}
+  ]
+}
+```
+
+You can open the visual configuration window via the "Settings" option in the system tray menu, and modifications will be saved automatically.
+
+### Default Weapon Configuration
+
+To change the default recoil weapon, edit `src/pubg_gun_control/config_manager.py`:
 
 ```python
-class InputListener:
-    # Default recoil weapon
-    DEFAULT_GUN = "UMP5"  # Change this to modify default weapon
+def get_default_config() -> list[dict[str, str]]:
+    return [
+        {"modifier": "alt", "mouse_button": "forward", "text": "MP5k"},
+        # ... Change the text of the first item to modify the default weapon
+    ]
 ```
 
 You also need to sync modify the `G_bind` configuration in `1.2.2-2024.5.20.-GHUB.-github.lua`.
 
 ## Changelog
+
+### v1.0.7 (2026-04-19)
+- Feature: Weapon lock functionality, Ctrl + Alt toggles lock/unlock weapon switching
+- Feature: Visual shortcut configuration via system tray settings window
+- Feature: Config file support, shortcuts saved in config.json
+- Optimize: Overlay visual feedback for locked state (yellow background, dark red text)
+- Fix: Updated default weapon configuration from SCAR-L to Beryl M762
 
 ### v1.0.6 (2026-04-06)
 - Fix: Overlay window now supports mouse click-through, no longer interfering with game operations

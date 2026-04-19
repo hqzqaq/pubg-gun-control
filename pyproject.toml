@@ -1,6 +1,6 @@
 [project]
 name = "pubg-gun-control"
-version = "1.0.6"
+version = "1.0.7"
 description = "PUBG枪械切换显示工具"
 readme = "README.md"
 requires-python = ">=3.12"

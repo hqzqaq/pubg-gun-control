@@ -10,6 +10,9 @@
 - 浮窗鼠标穿透，不干扰游戏操作
 - 支持多种枪械切换组合
 - 大写锁定键控制压枪模式开关
+- **枪械锁定功能**：Ctrl + Alt 锁定/解锁当前枪械，锁定后浮窗变黄色，无法切换枪械
+- **快捷键可视化配置**：通过系统托盘菜单打开设置窗口，修改快捷键显示文本
+- **配置文件支持**：快捷键配置保存在 config.json，支持持久化存储
 - 配合罗技G HUB压枪宏使用
 - 1.2.2-2024.5.20.-GHUB.-github.lua为压枪脚本，需要导入到G HUB中，具体教程可搜b站等
 - `鼠标快捷键是和压枪脚本保持一致的，如果需要更换快捷键或者枪械配置、压枪弹道参数等需要自行修改，借助AI修改也比较容易`
@@ -64,6 +67,7 @@
 | 按下 G / 3 / 4 / 5 键 | 取消压枪模式，显示"无"        |
 | 按下 Tab 键           | 取消压枪模式，显示"无"        |
 | 大写锁定关闭             | 显示"无"               |
+| Ctrl + Alt          | 锁定/解锁枪械切换（锁定后浮窗变黄色，无法切换） |
 
 ## 配合罗技G HUB使用
 
@@ -120,10 +124,13 @@ DPI: 1400
 pubg-gun-control/
 ├── src/pubg_gun_control/
 │   ├── __init__.py
+│   ├── config_manager.py   # 配置管理模块
 │   ├── input_listener.py   # 热键监听模块
 │   ├── overlay_window.py   # 浮窗显示模块
+│   ├── settings_window.py  # 设置窗口模块
 │   └── tray_icon.py        # 系统托盘模块
 ├── main.py                 # 主程序入口
+├── config.json             # 快捷键配置文件
 ├── pubg_gun_control.spec   # PyInstaller打包配置
 └── pyproject.toml          # 项目配置
 ```
@@ -167,17 +174,47 @@ git push origin v1.0.0
 
 ## 配置文件说明
 
-如需修改默认压枪枪械，编辑 `src/pubg_gun_control/input_listener.py`：
+### 快捷键配置
+
+快捷键配置保存在 `config.json` 文件中，格式如下：
+
+```json
+{
+  "shortcuts": [
+    {"modifier": "alt", "mouse_button": "forward", "text": "MP5k"},
+    {"modifier": "alt", "mouse_button": "backward", "text": "UMP5"},
+    {"modifier": "ctrl", "mouse_button": "forward", "text": "M416"},
+    {"modifier": "ctrl", "mouse_button": "backward", "text": "ACE32"},
+    {"modifier": "shift", "mouse_button": "forward", "text": "Beryl M762"},
+    {"modifier": "shift", "mouse_button": "backward", "text": "AUG"}
+  ]
+}
+```
+
+可以通过系统托盘菜单的"设置"选项打开可视化配置窗口，修改后自动保存。
+
+### 默认枪械配置
+
+如需修改默认压枪枪械，编辑 `src/pubg_gun_control/config_manager.py`：
 
 ```python
-class InputListener:
-    # 默认压枪枪械
-    DEFAULT_GUN = "UMP5"  # 修改这里可以更改默认枪械
+def get_default_config() -> list[dict[str, str]]:
+    return [
+        {"modifier": "alt", "mouse_button": "forward", "text": "MP5k"},
+        # ... 修改第一项的 text 即可更改默认枪械
+    ]
 ```
 
 需要同步修改 `1.2.2-2024.5.20.-GHUB.-github.lua` 中的 `G_bind` 配置。
 
 ## 更新日志
+
+### v1.0.7 (2026-04-19)
+- 新增：枪械锁定功能，Ctrl + Alt 组合键锁定/解锁枪械切换
+- 新增：快捷键可视化配置，通过系统托盘菜单打开设置窗口修改
+- 新增：配置文件支持，快捷键配置保存在 config.json
+- 优化：浮窗锁定状态视觉反馈（黄色背景，深红色文字）
+- 修复：更新默认枪械配置从 SCAR-L 改为 Beryl M762
 
 ### v1.0.6 (2026-04-06)
 - 修复：浮窗窗口现在支持鼠标穿透，不再干扰游戏操作
