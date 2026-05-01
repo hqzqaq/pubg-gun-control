@@ -27,17 +27,14 @@ _MOUSE_BUTTON_DISPLAY: dict[str, str] = {
 class SettingsWindow:
     """快捷键文本配置窗口"""
 
-    def __init__(self, parent: tk.Tk, shortcuts: list[dict[str, str]], on_save: Callable[[list[dict[str, str]]], None]):
-        """
-        初始化设置窗口
-
-        Args:
-            parent: 父窗口
-            shortcuts: 当前快捷键配置列表
-            on_save: 保存回调函数，参数为更新后的快捷键配置列表
-        """
+    def __init__(
+        self,
+        parent: tk.Tk,
+        shortcuts: list[dict[str, str]],
+        on_save: Callable[[list[dict[str, str]]], None],
+    ) -> None:
         self.parent = parent
-        self.shortcuts = shortcuts
+        self.shortcuts = list(shortcuts)
         self.on_save = on_save
         self.entries: list[tk.Entry] = []
         self._create_window()

@@ -6,9 +6,9 @@ PUBG Gun Control 主程序入口
 @version 1.0
 """
 
+import logging
 import sys
 import threading
-import time
 
 from pubg_gun_control.config_manager import load_config, save_config
 from pubg_gun_control.input_listener import InputListener
@@ -16,12 +16,13 @@ from pubg_gun_control.overlay_window import OverlayWindow
 from pubg_gun_control.settings_window import SettingsWindow
 from pubg_gun_control.tray_icon import TrayIcon
 
+logger = logging.getLogger(__name__)
+
 
 class GunControlApp:
     """PUBG枪械控制应用主类"""
 
-    def __init__(self):
-        """初始化应用"""
+    def __init__(self) -> None:
         self.overlay = OverlayWindow()
         self.input_listener: InputListener | None = None
         self.tray_icon: TrayIcon | None = None
@@ -29,113 +30,99 @@ class GunControlApp:
         self._lock = threading.Lock()
         self._shortcuts: list[dict[str, str]] = load_config()
 
-    def _on_gun_selected(self, gun_name: str):
-        """
-        枪械选择回调函数
-
-        Args:
-            gun_name: 选中的枪械名称
-        """
+    def _on_gun_selected(self, gun_name: str) -> None:
         with self._lock:
             if self.overlay.is_created():
                 self.overlay.update_text(gun_name)
 
-    def _on_lock_changed(self, locked: bool):
-        """
-        锁定状态变化回调函数
-
-        Args:
-            locked: 当前是否处于锁定状态
-        """
+    def _on_lock_changed(self, locked: bool) -> None:
         with self._lock:
             if self.overlay.is_created():
                 self.overlay.set_locked(locked)
             status = "已锁定" if locked else "已解锁"
-            print(f"枪械切换{status}")
+            logger.info("枪械切换%s", status)
 
-    def _on_exit(self):
-        """退出回调函数"""
+    def _on_exit(self) -> None:
         self.stop()
 
-    def _on_settings(self):
-        """设置菜单点击回调（在pystray后台线程中调用）"""
+    def _on_settings(self) -> None:
         if self.overlay.root:
             self.overlay.root.after(0, self._open_settings)
 
-    def _open_settings(self):
-        """在tkinter主线程中打开设置窗口"""
+    def _open_settings(self) -> None:
         SettingsWindow(self.overlay.root, self._shortcuts, self._on_settings_saved)
 
-    def _on_settings_saved(self, shortcuts: list[dict[str, str]]):
-        """设置保存回调"""
+    def _on_settings_saved(self, shortcuts: list[dict[str, str]]) -> None:
         self._shortcuts = shortcuts
         save_config(shortcuts)
         if self.input_listener:
             self.input_listener.update_shortcuts(shortcuts)
-        print("设置已保存")
+        logger.info("设置已保存")
 
-    def start(self):
-        """启动应用"""
+    def start(self) -> None:
         self._running = True
 
-        # 创建浮窗
         self.overlay.create()
-
-        # 创建输入监听器
         self.input_listener = InputListener(self._on_gun_selected, self._on_lock_changed, self._shortcuts)
         self.input_listener.start()
 
         self.tray_icon = TrayIcon(self._on_exit, self._on_settings)
         self.tray_icon.start()
 
-        # 启动浮窗主循环
         self.overlay.run()
 
-    def stop(self):
-        """停止应用"""
+    def stop(self) -> None:
         self._running = False
 
-        # 停止输入监听
         if self.input_listener:
             self.input_listener.stop()
             self.input_listener = None
 
-        # 关闭浮窗
         if self.overlay.is_created():
             self.overlay.close()
 
-        # 停止托盘图标
         if self.tray_icon:
             self.tray_icon.stop()
             self.tray_icon = None
 
 
-def main():
-    """主函数"""
-    print("PUBG Gun Control 启动中...")
-    print("使用方法：")
-    print("  - 大写锁定开启时：")
-    print("    LAlt + 鼠标前进键 = MP5k")
-    print("    LAlt + 鼠标后退键 = UMP5")
-    print("    LCtrl + 鼠标前进键 = M416")
-    print("    LCtrl + 鼠标后退键 = ACE32")
-    print("    LShift + 鼠标前进键 = Beryl M762")
-    print("    LShift + 鼠标后退键 = AUG")
-    print("  - 大写锁定关闭时：显示 '无'")
-    print("  - 按 G/3/4/5 或 Tab 键取消压枪模式")
-    print("  - Ctrl + Alt = 锁定/解锁当前枪械（锁定后无法切换，窗口变黄色）")
-    print("  - 右键点击托盘图标可退出程序")
-    print()
+def _setup_logging() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+        ],
+    )
+
+
+def main() -> int:
+    _setup_logging()
+
+    logger.info("PUBG Gun Control 启动中...")
+    logger.info("使用方法：")
+    logger.info("  - 大写锁定开启时：")
+    logger.info("    LAlt + 鼠标前进键 = MP5k")
+    logger.info("    LAlt + 鼠标后退键 = UMP5")
+    logger.info("    LCtrl + 鼠标前进键 = M416")
+    logger.info("    LCtrl + 鼠标后退键 = ACE32")
+    logger.info("    LShift + 鼠标前进键 = Beryl M762")
+    logger.info("    LShift + 鼠标后退键 = AUG")
+    logger.info("  - 大写锁定关闭时：显示 '无'")
+    logger.info("  - 按 G/3/4/5 或 Tab 键取消压枪模式")
+    logger.info("  - Ctrl + Alt = 锁定/解锁当前枪械（锁定后无法切换，窗口变黄色）")
+    logger.info("  - 右键点击托盘图标可退出程序")
 
     app = GunControlApp()
 
     try:
         app.start()
     except KeyboardInterrupt:
-        print("\n接收到中断信号，正在退出...")
+        logger.info("接收到中断信号，正在退出...")
     finally:
         app.stop()
-        print("程序已退出")
+        logger.info("程序已退出")
 
     return 0
 

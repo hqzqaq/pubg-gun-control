@@ -9,6 +9,7 @@
 """
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,8 @@ _CONFIG_FILENAME = "config.json"
 
 
 def _get_config_path() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent / _CONFIG_FILENAME
     return Path(__file__).resolve().parent.parent.parent / _CONFIG_FILENAME
 
 

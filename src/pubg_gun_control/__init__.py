@@ -8,11 +8,17 @@ PUBG Gun Control - 枪械切换热键显示工具
 @version 1.0
 """
 
+from importlib.metadata import version
+
 from .config_manager import load_config, save_config
-from .input_listener import InputListener
+from .input_listener import InputListener, ShortcutMatcher
 from .overlay_window import OverlayWindow
 from .settings_window import SettingsWindow
 from .tray_icon import TrayIcon
 
-__all__ = ["InputListener", "OverlayWindow", "TrayIcon", "SettingsWindow", "load_config", "save_config"]
-__version__ = "1.0.0"
+try:
+    __version__ = version("pubg-gun-control")
+except Exception:
+    __version__ = "1.0.7"
+
+__all__ = ["InputListener", "ShortcutMatcher", "OverlayWindow", "TrayIcon", "SettingsWindow", "load_config", "save_config"]
