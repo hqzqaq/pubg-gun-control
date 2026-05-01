@@ -19,6 +19,6 @@ from .tray_icon import TrayIcon
 try:
     __version__ = version("pubg-gun-control")
 except Exception:
-    __version__ = "1.0.7"
+    __version__ = "1.0.8"
 
 __all__ = ["InputListener", "ShortcutMatcher", "OverlayWindow", "TrayIcon", "SettingsWindow", "load_config", "save_config"]

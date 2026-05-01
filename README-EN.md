@@ -209,6 +209,16 @@ You also need to sync modify the `G_bind` configuration in `1.2.2-2024.5.20.-GHU
 
 ## Changelog
 
+### v1.0.8 (2026-05-01)
+- **Fix**: Fixed Caps Lock toggle delay issue (5-second delay), now responds instantly
+- **Fix**: Fixed config file not saving after PyInstaller packaging
+- **Fix**: Fixed potential crash caused by tkinter cross-thread operations
+- **Refactor**: Extracted `ShortcutMatcher` class to separate input listener responsibilities
+- **Refactor**: Implemented thread-safe UI updates using `queue.Queue`
+- **Optimize**: Added complete type annotations for better code maintainability
+- **Optimize**: Replaced `print` statements with `logging` module
+- **Optimize**: Extracted hardcoded values in `OverlayWindow` to module constants
+
 ### v1.0.7 (2026-04-19)
 - Feature: Weapon lock functionality, Ctrl + Alt toggles lock/unlock weapon switching
 - Feature: Visual shortcut configuration via system tray settings window
