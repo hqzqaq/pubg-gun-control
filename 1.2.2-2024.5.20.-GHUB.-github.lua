@@ -63,42 +63,43 @@ userInfo = {
 	-- 支持的枪械，排列顺序即是配置顺序，可以自行调整。模式：0 - 不启用 | 1 - 启用 | 2 - 开启连点	系数：枪械自身系数，基于 ADS 进行调整 (ADS为全局系数，此处为自身系数)	下蹲系数：下蹲时的系数，基于 ADS 和 自身系数
 	canUse = {
 		["7.62"] = {
-			-- 枪械             模式         系数        下蹲系数		屏息系数	        裸配系数	      满配系数	      趴姿系数
-			{ "Beryl M762",     1,          4.30, 		0.82,		1.38,		1.25,		0.83,		0.60}, 
-			{ "AKM",            1,          1.95,		0.74,		1.38,		1.25,		2.12,		0.50}, 
-			{ "Groza",          1,          1.60,		0.70,		1.38,		1.25,		2.10,		0.50},
-			{ "ACE32",          1,          3.50,		0.70,		1.38,		0.30,		1.1,		0.00}, 
-			{ "DP-28",          0,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50}, 
-			{ "MK47",           2,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50},
+			-- 枪械             模式         系数        下蹲系数	  屏息系数	   裸配系数	     满配系数	    趴姿系数	  二倍系数    三倍系数
+			{ "Beryl M762",     1,          4.30, 		0.82,		1.40,		1.25,		2.00,		0.60,		1.24,		0.75},
+			{ "AKM",            1,          1.95,		0.74,		1.38,		1.25,		2.12,		0.50,		1.15,		0.75},
+			{ "Groza",          1,          1.60,		0.70,		1.38,		1.25,		2.10,		0.50,		1.15,		0.75},
+			{ "ACE32",          1,          3.50,		0.80,		1.50,		1.25,		2.40,		0.00,		1.20,		0.75},
+			{ "DP-28",          0,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50,		1.10,		0.75},
+			{ "MK47",           2,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50,		1.10,		0.75},
 		},
 		["5.56"] = {
-			-- 枪械             模式         系数		下蹲系数	      屏息系数	        ----          满配系数   	三倍系数
-			{ "AUG",            1,          1.85,		0.80,		1.38,		2.50,		1.90,		0.50}, 
-			{ "M416",	    1,          4.40,		0.85,		1.38,		1.50, 		0.91,		0.50}, 
-			{ "P90",            1,          1.80,		0.85,		1.38,		1.25,		2.60,		0.50}, 
-			{ "M249",           1,          1.50,		0.80,		1.38,		1.25,		2.60,		0.50},	
-			{ "M16A4",          2,          1.50,		0.80,		1.38,		1.25,		3.20,		0.50}, 
-			{ "SCAR-L",         1,          1.20,		0.88,		1.38,		1.25,		2.70,		0.50}, 
-			{ "QBZ",            1,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50}, 
-			{ "G36C",           1,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50}, 
+			-- 枪械             模式         系数		下蹲系数	      屏息系数	     裸配系数      满配系数	    趴姿系数	  二倍系数    三倍系数
+			{ "AUG",            1,          1.85,		0.80,		1.38,		1.90,		4.45,		0.50,		1.15,		0.72},
+			{ "M416",           1,          1.85,		0.80,		1.38,		2.50, 		4.64,		0.50,		1.19,		0.70},
+			{ "P90",            1,          1.80,		0.85,		1.38,		1.25,		2.60,		0.50,		1.15,		0.70},
+			{ "M249",           1,          1.50,		0.80,		1.38,		1.25,		2.60,		0.50,		1.15,		0.70},
+			{ "M16A4",          2,          1.50,		0.80,		1.38,		1.25,		3.20,		0.50,		1.15,		0.70},
+			{ "SCAR-L",         1,          1.20,		0.88,		1.38,		1.25,		2.70,		0.50,		1.15,		0.70},
+			{ "QBZ",            1,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50,		1.10,		0.70},
+			{ "G36C",           1,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50,		1.10,		0.70},
 		},
 		[".45"] = {
-			-- 枪械             模式         系数		XD系数	      XP系数	      LP系数 	       三倍系数
-			{ "Tommy Gun",      0,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50}, 
+			-- 枪械             模式         系数		  下蹲系数	   屏息系数	    裸配系数 	    满配系数      趴姿系数	  二倍系数    三倍系数
+			{ "Tommy Gun",      0,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50,		1.10,		1.70},
 		},
 		["9mm"] = {
-			-- 枪械             模式         系数		XD系数	      XP系数	      LP系数	三倍系数
-			{ "Vector",         0,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50}, 
-			{ "Micro UZI",      0,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50}, 
-			{ "UMP45",          1,          0.90,		0.80,		1.38,		1.25,		2.60,		0.50},
-			{ "MP5K",           1,          0.75,		0.80,		1.38,		1.25,		2.60,		0.50},  
+			-- 枪械             模式         系数		  下蹲系数	   屏息系数	    裸配系数	    满配系数      趴姿系数	  二倍系数    三倍系数
+			{ "Vector",         0,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50,		1.10,		0.70},
+			{ "Micro UZI",      0,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50,		1.10,		0.70},
+			{ "UMP45",          1,          0.90,		0.80,		1.38,		1.25,		4.90,		0.50,		1.40,		0.90},
+			{ "MP5K",           1,          0.75,		0.80,		1.38,		1.25,		6.90,		0.50,		1.20,		0.70},
 		},
+	},
 
 
 	},
 
 	-- G键自定义绑定，多余的组合键可以删除
-	-- 可绑定指令请参考: 
+	-- 可绑定指令请参考:
 	-- 指令绑定演示参考: https://github.com/kiccer/Soldier76#g_bind-%E6%8C%87%E4%BB%A4%E7%BB%91%E5%AE%9A%E6%BC%94%E7%A4%BA
 	G_bind = {
 		-- G
@@ -143,8 +144,8 @@ userInfo = {
 		["lshift + G11"] = "",
 		-- ralt + G
 		["ralt + G3"] = "",
-		["ralt + G4"] = "",
-		["ralt + G5"] = "",
+		["ralt + G4"] = "scopeX3",
+		["ralt + G5"] = "scopeX2",
 		["ralt + G6"] = "",
 		["ralt + G7"] = "",
 		["ralt + G8"] = "",
@@ -153,8 +154,8 @@ userInfo = {
 		["ralt + G11"] = "",
 		-- rctrl + G
 		["rctrl + G3"] = "",
-		["rctrl + G4"] = "",
-		["rctrl + G5"] = "",
+		["rctrl + G4"] = "lock_state",
+		["rctrl + G5"] = "scopeX1",
 		["rctrl + G6"] = "",
 		["rctrl + G7"] = "",
 		["rctrl + G8"] = "",
@@ -231,6 +232,7 @@ pubg = {
 	scope_current = "scopeX1", -- 当前使用倍镜
 	generalSensitivityRatio = userInfo.sensitivity.ADS / 100, -- 按比例调整灵敏度
 	isStart = false, -- 是否是启动状态
+	stateLocked = false, -- 枪械倍镜锁定状态
 	G1 = false, -- G1键状态
 	currentTime = 0, -- 此刻
 	bulletIndex = 0, -- 第几颗子弹
@@ -257,7 +259,7 @@ function pubg.isAimingState (mode)
 			elseif userInfo.aimingSettings == "default" then
 				return not IsModifierPressed("lshift") and not IsModifierPressed("lalt")
 			elseif userInfo.aimingSettings == "ctrlmode" then
-				return IsMouseButtonPressed(3) and not IsModifierPressed("lshift")
+				return IsMouseButtonPressed(3)
 			elseif userInfo.aimingSettings == "custom" then
 				return userInfo.customAimingSettings.ADS()
 			end
@@ -310,7 +312,7 @@ pubg["MK47"] = function (gunName)
 	return pubg.execOptions(gunName, {
 		interval = 10,
 		ballistic = {
-			{1, 0},	
+			{1, 0},
 			{2, 68},
 			{3, 66},
 			{4, 72},
@@ -406,7 +408,7 @@ pubg["M16A4"] = function (gunName)
 	return pubg.execOptions(gunName, {
 		interval = 280,
 		ballistic = {
-			{1, 0},	
+			{1, 0},
 			{2, 98},
 			{3, 104},
 			{4, 109},
@@ -887,11 +889,13 @@ function pubg.execOptions (gunName, options)
 		amount = #ballisticConfig2, -- Number of bullets
 		interval = options.interval, -- Time of each bullet
 		ballistic = ballisticConfig2, -- ballistic data
-		ctrlmodeRatio = gunInfo[4], -- Individual recoil coefficient for each gun when squatting
+		ctrlmodeRatio = gunInfo[4],
 		BreathRatio = gunInfo[5],
 		LuopeiRatio = gunInfo[6],
-		SanbeiRatio = gunInfo[7],
-		PaziRatio = gunInfo[8]
+		ManpeiRatio = gunInfo[7],
+		PaziRatio = gunInfo[8],
+		scopeX2Ratio = gunInfo[9],
+		scopeX3Ratio = gunInfo[10]
 	}
 
 end
@@ -968,14 +972,14 @@ function pubg.auto (options)
 		   Sleep(140)
 		   ReleaseMouseButton(1)
 		   MoveMouseRelative(0, 38)
-			if not IsMouseButtonPressed(1)then 
-			  break 
-		    end       
+			if not IsMouseButtonPressed(1)then
+			  break
+		    end
 		end
 	end
 
 	-- Real-time operation parameters
-	pubg.autoLog(options, y)
+	pubg.autoLog(options, y, realY)
 	pubg.outputLogRender()
 
 	pubg.xCounter = pubg.xCounter + x
@@ -1002,10 +1006,15 @@ end
 function pubg.getRealY (options, y)
 	local realY = y
 
-	if pubg.isAimingState("ADS") then
-		realY = y * pubg[pubg.scope_current]
-	elseif pubg.isAimingState("Aim") then
+	if pubg.isAimingState("Aim") and pubg.scope_current == "scopeX1" then
 		realY = y * userInfo.sensitivity.Aim * pubg.generalSensitivityRatio
+	else
+		realY = y * pubg[pubg.scope_current]
+		if pubg.scope_current == "scopeX2" and options.scopeX2Ratio then
+			realY = realY * options.scopeX2Ratio
+		elseif pubg.scope_current == "scopeX3" and options.scopeX3Ratio then
+			realY = realY * options.scopeX3Ratio
+		end
 	end
 -- 下蹲压枪
 	if userInfo.aimingSettings == "ctrlmode" and IsModifierPressed("lctrl") then
@@ -1014,18 +1023,11 @@ function pubg.getRealY (options, y)
 -- 屏息压枪
 	if userInfo.aimingSettings == "ctrlmode" and IsModifierPressed("lshift") then
 		realY = realY * options.BreathRatio
--- 三倍屏息压枪
-    elseif userInfo.aimingSettings == "ctrlmode" and IsModifierPressed("lshift") and IsKeyLockOn("capslock") then
-        realY = realY * options.BreathRatio * options.SanbeiRatio
 	end
--- 裸配压枪
-	--if userInfo.aimingSettings == "ctrlmode" and not IsKeyLockOn("numlock") then
-		--realY = realY * options.LuopeiRatio
-	--end
--- 三倍压枪
-	--if userInfo.aimingSettings == "ctrlmode" and IsKeyLockOn("capslock") then
-		realY = realY * options.SanbeiRatio
-	--end
+-- 满配压枪 (默认始终生效)
+	if userInfo.aimingSettings == "ctrlmode" then
+		realY = realY * options.ManpeiRatio
+	end
 -- 趴姿压枪
 	if userInfo.aimingSettings == "ctrlmode" and IsModifierPressed("lalt") then
 		realY = realY * options.PaziRatio
@@ -1069,11 +1071,126 @@ end
 
 --[[ set current scope ]]
 function pubg.setScope (scope)
+	if pubg.stateLocked then
+		local gunName = "未选择"
+		if pubg.bulletType ~= "" and pubg.gun[pubg.bulletType] and pubg.gun[pubg.bulletType][pubg.gunIndex] then
+			gunName = pubg.gun[pubg.bulletType][pubg.gunIndex]
+		end
+		OutputLogMessage("========================================\n")
+		OutputLogMessage("【锁定拦截】倍镜切换被阻止！当前状态已锁定\n")
+		OutputLogMessage("  当前枪械: %s\n", gunName)
+		OutputLogMessage("  当前倍镜: %s\n", pubg.scope_current)
+		OutputLogMessage("  尝试切换到: %s\n", scope)
+		OutputLogMessage("  提示: 按下 右Ctrl+G4 解锁后可切换\n")
+		OutputLogMessage("========================================\n")
+		return
+	end
+	OutputLogMessage("[DEBUG] setScope: %s -> %s\n", tostring(pubg.scope_current), tostring(scope))
 	pubg.scope_current = scope
+end
+
+--[[ 循环切换倍镜状态 ]]
+function pubg.toggleScope (targetScope)
+	OutputLogMessage("[DEBUG] toggleScope called with target: %s, current scope: %s\n", targetScope, tostring(pubg.scope_current))
+
+	-- 判断当前是否在目标倍镜状态，如果是则切换回基础倍镜
+	if pubg.scope_current == targetScope then
+		OutputLogMessage("[DEBUG] Current scope matches target, switching to scopeX1\n")
+		pubg.scope_current = "scopeX1"
+	else
+		OutputLogMessage("[DEBUG] Current scope does not match target, switching to %s\n", targetScope)
+		pubg.scope_current = targetScope
+	end
+
+	OutputLogMessage("[DEBUG] Scope changed to: %s\n", tostring(pubg.scope_current))
+
+	-- 打印切换日志
+	pubg.printScopeChangeLog()
+end
+
+--[[ 切换二倍镜 ]]
+function pubg.toggleScopeX2 ()
+	pubg.toggleScope("scopeX2")
+end
+
+--[[ 切换三倍镜 ]]
+function pubg.toggleScopeX3 ()
+	pubg.toggleScope("scopeX3")
+end
+
+--[[ 打印倍镜切换日志 ]]
+function pubg.printScopeChangeLog ()
+	local gunName = "未选择"
+	if pubg.bulletType ~= "" and pubg.gun[pubg.bulletType] and pubg.gun[pubg.bulletType][pubg.gunIndex] then
+		gunName = pubg.gun[pubg.bulletType][pubg.gunIndex]
+	end
+
+	local scopeNameMap = {
+		["scopeX1"] = "基础倍镜(红点/全息/侧瞄)",
+		["scopeX2"] = "二倍镜",
+		["scopeX3"] = "三倍镜",
+		["scopeX4"] = "四倍镜",
+		["scopeX6"] = "六倍镜"
+	}
+
+	local scopeName = scopeNameMap[pubg.scope_current] or pubg.scope_current
+
+	OutputLogMessage("========================================\n")
+	OutputLogMessage("【倍镜切换】当前枪械: %s | 当前倍镜: %s\n", gunName, scopeName)
+	OutputLogMessage("========================================\n")
+end
+
+--[[ 切换枪械倍镜锁定状态 ]]
+function pubg.toggleLockState ()
+	pubg.stateLocked = not pubg.stateLocked
+
+	local gunName = "未选择"
+	if pubg.bulletType ~= "" and pubg.gun[pubg.bulletType] and pubg.gun[pubg.bulletType][pubg.gunIndex] then
+		gunName = pubg.gun[pubg.bulletType][pubg.gunIndex]
+	end
+
+	local scopeNameMap = {
+		["scopeX1"] = "基础倍镜(红点/全息/侧瞄)",
+		["scopeX2"] = "二倍镜",
+		["scopeX3"] = "三倍镜",
+		["scopeX4"] = "四倍镜",
+		["scopeX6"] = "六倍镜"
+	}
+	local scopeName = scopeNameMap[pubg.scope_current] or pubg.scope_current
+
+	OutputLogMessage("========================================\n")
+	if pubg.stateLocked then
+		OutputLogMessage("【状态锁定】枪械和倍镜已锁定！\n")
+		OutputLogMessage("  锁定枪械: %s\n", gunName)
+		OutputLogMessage("  锁定倍镜: %s (%s)\n", pubg.scope_current, scopeName)
+		OutputLogMessage("  操作: 所有枪械/倍镜切换操作将被阻止\n")
+		OutputLogMessage("  解锁: 再次按下 右Ctrl+G4 即可解锁\n")
+	else
+		OutputLogMessage("【状态解锁】枪械和倍镜已解锁！\n")
+		OutputLogMessage("  当前枪械: %s\n", gunName)
+		OutputLogMessage("  当前倍镜: %s (%s)\n", pubg.scope_current, scopeName)
+		OutputLogMessage("  操作: 现在可以自由切换枪械和倍镜\n")
+		OutputLogMessage("  锁定: 按下 右Ctrl+G4 可重新锁定\n")
+	end
+	OutputLogMessage("========================================\n")
 end
 
 --[[ set current gun ]]
 function pubg.setGun (gunName)
+	if pubg.stateLocked then
+		local currentGun = "未选择"
+		if pubg.bulletType ~= "" and pubg.gun[pubg.bulletType] and pubg.gun[pubg.bulletType][pubg.gunIndex] then
+			currentGun = pubg.gun[pubg.bulletType][pubg.gunIndex]
+		end
+		OutputLogMessage("========================================\n")
+		OutputLogMessage("【锁定拦截】枪械切换被阻止！当前状态已锁定\n")
+		OutputLogMessage("  当前枪械: %s\n", currentGun)
+		OutputLogMessage("  当前倍镜: %s\n", pubg.scope_current)
+		OutputLogMessage("  尝试切换到: %s\n", gunName)
+		OutputLogMessage("  提示: 按下 右Ctrl+G4 解锁后可切换\n")
+		OutputLogMessage("========================================\n")
+		return
+	end
 
 	local forList = { ".45", "9mm", "5.56", "7.62" }
 	local allCanUse_index = 0
@@ -1201,7 +1318,7 @@ autoshootmin = 45  ---拾取最小延迟
 autoshootmax = 60  ---拾取最大延迟
 function pubg.fastPickup ()
 	PressAndReleaseKey("tab")
-	Sleep(math.random(16,28)) 
+	Sleep(math.random(16,28))
 	PressAndReleaseMouseButton(1)
 
 	local lastItemCp = {
@@ -1223,11 +1340,11 @@ function pubg.fastPickup ()
 				pubg.randomOffset(32767, 100)
 			)
 			ReleaseMouseButton(1)
-			Sleep(math.random(autoshootmin,autoshootmax)) 
+			Sleep(math.random(autoshootmin,autoshootmax))
 		end
 	end
-	
-	Sleep(math.random(autoshootmin,autoshootmax)) 
+
+	Sleep(math.random(autoshootmin,autoshootmax))
 	MoveMouseTo(
 		pubg.randomOffset(lastItemCp[1]),
 		pubg.randomOffset(lastItemCp[2])
@@ -1341,6 +1458,8 @@ function pubg.runCmd (cmd)
 		["scopeX3"] = pubg.setScope,
 		["scopeX4"] = pubg.setScope,
 		["scopeX6"] = pubg.setScope,
+		["toggle_scopeX2"] = pubg.toggleScopeX2,
+		["toggle_scopeX3"] = pubg.toggleScopeX3,
 		["UMP45"] = pubg.setGun,
 		["MP5K"] = pubg.setGun,
 		["Tommy Gun"] = pubg.setGun,
@@ -1371,6 +1490,7 @@ function pubg.runCmd (cmd)
 		["off"] = function ()
 			pubg.changeIsStart(false)
 		end,
+		["lock_state"] = pubg.toggleLockState,
 	}
 
 	local cmdGroup = string.split(cmd, '|')
@@ -1434,8 +1554,19 @@ function pubg.outputLogGunInfo ()
 	local i = pubg.gunIndex
 	local gunName = pubg.gun[k][i]
 
+	local scopeNameMap = {
+		["scopeX1"] = "基础倍镜(红点/全息/侧瞄)",
+		["scopeX2"] = "二倍镜",
+		["scopeX3"] = "三倍镜",
+		["scopeX4"] = "四倍镜",
+		["scopeX6"] = "六倍镜"
+	}
+	local scopeName = scopeNameMap[pubg.scope_current] or pubg.scope_current
+	local lockStatus = pubg.stateLocked and "LOCKED" or "UNLOCKED"
+
 	return table.concat({
-		"Currently scope: [ " .. pubg.scope_current .. " ]\n",
+		"Lock state: [ " .. lockStatus .. " ] (RightCtrl+G4 to toggle)\n",
+		"Currently scope: [ " .. pubg.scope_current .. " (" .. scopeName .. ") ]\n",
 		"Currently series: [ ", k, " ]\n",
 		"Currently index in series: [ ", i, " / ", #pubg.gun[k], " ]\n",
 		"Currently index in canUse: [ ", pubg.allCanUse_index, " / ", pubg.allCanUse_count, " ]\n",
@@ -1463,10 +1594,13 @@ function pubg.outputLogRecoilTable ()
 end
 
 --[[ log of pubg.auto ]]
-function pubg.autoLog (options, y)
+function pubg.autoLog (options, y, realY)
+	local scopeVal = pubg[pubg.scope_current] or 0
+	local adsDetected = pubg.isAimingState("ADS")
 	pubg.renderDom.autoLog = table.concat({
 		"----------------------------------- Automatically counteracting gun recoil -----------------------------------\n",
 		"------------------------------------------------------------------------------------------------------------------------------\n",
+		"scope: ", pubg.scope_current, " (", scopeVal, ") | ADS: ", tostring(adsDetected), " | y: ", y, " | realY: ", realY, "\n",
 		"bullet index: ", pubg.bulletIndex, "    target counter: ", options.ballistic[pubg.bulletIndex], "    current counter: ", pubg.counter, "\n",
 		"D-value(target - current): ", options.ballistic[pubg.bulletIndex], " - ", pubg.counter, " = ", options.ballistic[pubg.bulletIndex] - pubg.counter, "\n",
 		"move: math.ceil((", pubg.currentTime, " - ", pubg.startTime, ") / (", options.interval, " * (", pubg.bulletIndex, " - 1)) * ", options.ballistic[pubg.bulletIndex], ") - ", pubg.counter, " = ", y, "\n",
@@ -1512,12 +1646,20 @@ function pubg.shooting()
         pubg.auto(pubg.gunOptions[pubg.bulletType][pubg.gunIndex])
     until not IsMouseButtonPressed(1)
     OutputLogMessage("Stop Shooting....\n")
-end	
+end
 
 -- [[ processing instruction ]]
 function pubg.modifierHandle (modifier)
 	local cmd = userInfo.G_bind[modifier]
 	pubg.renderDom.combo_key = modifier -- Save combination keys
+
+	-- 检查是否在压枪模式下（大写键开启）
+	if not pubg.runStatus() then
+		OutputLogMessage("【提示】请先开启大写键(Caps Lock)进入压枪模式后再切换枪械/倍镜\n")
+		pubg.renderDom.cmd = ""
+		pubg.outputLogRender()
+		return
+	end
 
 	if (cmd) then
 		pubg.renderDom.cmd = cmd -- Save instruction name
@@ -1564,7 +1706,7 @@ function OnEvent (event, arg, family)
 	if event == "MOUSE_BUTTON_PRESSED" and arg >=3 and arg <= 11 and family == "mouse" then
 		local modifier = "G" .. arg
 		local list = { "lalt", "lctrl", "lshift", "ralt", "rctrl", "rshift" }
-        
+
 		for i = 1, #list do
 			if IsModifierPressed(list[i]) then
 				modifier = list[i] .. " + " .. modifier
@@ -1572,6 +1714,7 @@ function OnEvent (event, arg, family)
 			end
 		end
 
+		OutputLogMessage("[DEBUG] Mouse button pressed: G%s, modifier detected: %s\n", arg, modifier)
 		pubg.modifierHandle(modifier)
 	elseif event == "G_PRESSED" and arg >=1 and arg <= 12 then
 		-- if not pubg.runStatus() and userInfo.startControl ~= "G_bind" then return false end

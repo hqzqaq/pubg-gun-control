@@ -5,6 +5,8 @@ description = "PUBG枪械切换显示工具"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "keyboard>=0.13.5",
+    "mouse>=0.7.1",
     "pillow>=12.1.1",
     "pynput>=1.8.1",
     "pystray>=0.19.5",

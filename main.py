@@ -42,6 +42,12 @@ class GunControlApp:
             status = "已锁定" if locked else "已解锁"
             logger.info("枪械切换%s", status)
 
+    def _on_scope_changed(self, scope_mode: int) -> None:
+        with self._lock:
+            if self.overlay.is_created():
+                self.overlay.set_scope_mode(scope_mode)
+            logger.info("倍镜模式切换为 %d 倍镜", scope_mode)
+
     def _on_exit(self) -> None:
         self.stop()
 
@@ -63,7 +69,7 @@ class GunControlApp:
         self._running = True
 
         self.overlay.create()
-        self.input_listener = InputListener(self._on_gun_selected, self._on_lock_changed, self._shortcuts)
+        self.input_listener = InputListener(self._on_gun_selected, self._on_lock_changed, self._on_scope_changed, self._shortcuts)
         self.input_listener.start()
 
         self.tray_icon = TrayIcon(self._on_exit, self._on_settings)
@@ -112,6 +118,8 @@ def main() -> int:
     logger.info("  - 大写锁定关闭时：显示 '无'")
     logger.info("  - 按 G/3/4/5 或 Tab 键取消压枪模式")
     logger.info("  - Ctrl + Alt = 锁定/解锁当前枪械（锁定后无法切换，窗口变黄色）")
+    logger.info("  - RAlt + 鼠标G5键 = 切换2倍镜/1倍镜")
+    logger.info("  - RAlt + 鼠标G4键 = 切换3倍镜/1倍镜")
     logger.info("  - 右键点击托盘图标可退出程序")
 
     app = GunControlApp()

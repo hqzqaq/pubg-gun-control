@@ -65,16 +65,20 @@ class InputListener:
         self,
         callback: Callable[[str], None],
         lock_callback: Callable[[bool], None] | None = None,
+        scope_callback: Callable[[int], None] | None = None,
         shortcuts: list[dict[str, str]] | None = None,
     ) -> None:
         self.callback = callback
         self.lock_callback = lock_callback
+        self.scope_callback = scope_callback
         self.keyboard_listener: keyboard.Listener | None = None
         self.mouse_listener: mouse.Listener | None = None
 
         self.alt_pressed = False
         self.ctrl_pressed = False
         self.shift_pressed = False
+        self.alt_r_pressed = False
+        self.ctrl_r_pressed = False
 
         self.current_text: str = "无"
         self.aim_mode_enabled = False
@@ -84,6 +88,8 @@ class InputListener:
         self.matcher = ShortcutMatcher(shortcuts or [])
         self.last_gun_name: str = self.matcher.first_gun_name
 
+        self.scope_mode: int = 1
+
     def update_shortcuts(self, shortcuts: list[dict[str, str]]) -> None:
         self.matcher.update_shortcuts(shortcuts)
 
@@ -92,6 +98,12 @@ class InputListener:
 
     def _turn_off_caps_lock(self) -> None:
         if self.is_caps_lock_on():
+            self._ignore_caps_lock_until = time.monotonic() + _CAPS_LOCK_IGNORE_SECONDS
+            ctypes.windll.user32.keybd_event(0x14, 0, 0, 0)
+            ctypes.windll.user32.keybd_event(0x14, 0, 2, 0)
+
+    def _turn_on_caps_lock(self) -> None:
+        if not self.is_caps_lock_on():
             self._ignore_caps_lock_until = time.monotonic() + _CAPS_LOCK_IGNORE_SECONDS
             ctypes.windll.user32.keybd_event(0x14, 0, 0, 0)
             ctypes.windll.user32.keybd_event(0x14, 0, 2, 0)
@@ -115,12 +127,13 @@ class InputListener:
         try:
             if key == Key.alt_l or key == Key.alt:
                 self.alt_pressed = True
-                if self.ctrl_pressed:
-                    self._toggle_lock()
+            elif key == Key.alt_r or key == Key.alt_gr:
+                self.alt_r_pressed = True
+                logger.info("右Alt键按下: key=%s", key)
             elif key == Key.ctrl_l or key == Key.ctrl:
                 self.ctrl_pressed = True
-                if self.alt_pressed:
-                    self._toggle_lock()
+            elif key == Key.ctrl_r:
+                self.ctrl_r_pressed = True
             elif key == Key.shift_l or key == Key.shift:
                 self.shift_pressed = True
             elif key == Key.caps_lock:
@@ -136,7 +149,16 @@ class InputListener:
                 self._cancel_aim_mode()
                 self._turn_off_caps_lock()
             elif hasattr(key, "char") and key.char:
-                if key.char.lower() == "g" or key.char in ("3", "4", "5"):
+                if key.char == "1":
+                    if self.current_text == "无":
+                        self.aim_mode_enabled = True
+                        self.current_text = self.last_gun_name
+                        self.callback(self.current_text)
+                    self._turn_on_caps_lock()
+                elif key.char == "2":
+                    self._cancel_aim_mode()
+                    self._turn_off_caps_lock()
+                elif key.char.lower() == "g" or key.char in ("3", "4", "5"):
                     self._cancel_aim_mode()
                     self._turn_off_caps_lock()
         except AttributeError:
@@ -146,8 +168,12 @@ class InputListener:
         try:
             if key == Key.alt_l or key == Key.alt:
                 self.alt_pressed = False
+            elif key == Key.alt_r or key == Key.alt_gr:
+                self.alt_r_pressed = False
             elif key == Key.ctrl_l or key == Key.ctrl:
                 self.ctrl_pressed = False
+            elif key == Key.ctrl_r:
+                self.ctrl_r_pressed = False
             elif key == Key.shift_l or key == Key.shift:
                 self.shift_pressed = False
         except AttributeError:
@@ -157,14 +183,46 @@ class InputListener:
         if not pressed:
             return
 
+        logger.info("鼠标点击: button=%s, alt_r_pressed=%s, ctrl_r_pressed=%s, caps_lock=%s", button, self.alt_r_pressed, self.ctrl_r_pressed, self.is_caps_lock_on())
+
         if not self.is_caps_lock_on():
             self.aim_mode_enabled = False
             self.current_text = "无"
             self.callback(self.current_text)
             return
 
+        if self.ctrl_r_pressed and button == Button.x1:
+            logger.info("RCtrl + G4 触发锁定/解锁")
+            self._toggle_lock()
+            return
+
         if self.locked:
             return
+
+        if self.alt_r_pressed:
+            if button == Button.x2:
+                logger.info("RAlt + G5 触发")
+                self.scope_mode = 2
+                logger.info("倍镜模式切换为: %d", self.scope_mode)
+                if self.scope_callback:
+                    self.scope_callback(self.scope_mode)
+                return
+            elif button == Button.x1:
+                logger.info("RAlt + G4 触发")
+                self.scope_mode = 3
+                logger.info("倍镜模式切换为: %d", self.scope_mode)
+                if self.scope_callback:
+                    self.scope_callback(self.scope_mode)
+                return
+
+        if self.ctrl_r_pressed:
+            if button == Button.x2:
+                logger.info("RCtrl + G5 触发")
+                self.scope_mode = 1
+                logger.info("倍镜模式切换为: %d", self.scope_mode)
+                if self.scope_callback:
+                    self.scope_callback(self.scope_mode)
+                return
 
         gun_name = self._get_gun_name(button)
         if gun_name:
