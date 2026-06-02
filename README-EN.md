@@ -209,6 +209,10 @@ You also need to sync modify the `G_bind` configuration in `1.2.2-2024.5.20.-GHU
 
 ## Changelog
 
+### v1.0.9 (2026-06-02)
+- **Optimize**: Optimized code structure and performance
+- **Fix**: Fixed known issues
+
 ### v1.0.8 (2026-05-01)
 - **Fix**: Fixed Caps Lock toggle delay issue (5-second delay), now responds instantly
 - **Fix**: Fixed config file not saving after PyInstaller packaging
