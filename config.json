@@ -2,13 +2,13 @@
   "shortcuts": [
     {
       "modifier": "alt",
-      "mouse_button": "forward",
-      "text": "MP5k"
+      "mouse_button": "backward",
+      "text": "UMP5"
     },
     {
       "modifier": "alt",
-      "mouse_button": "backward",
-      "text": "UMP5"
+      "mouse_button": "forward",
+      "text": "MP5k"
     },
     {
       "modifier": "ctrl",
@@ -30,5 +30,33 @@
       "mouse_button": "backward",
       "text": "AUG"
     }
-  ]
+  ],
+  "attachments": [
+    {
+      "modifier": "alt",
+      "mouse_button": "middle",
+      "category": "muzzle",
+      "label": "枪口"
+    },
+    {
+      "modifier": "ctrl",
+      "mouse_button": "middle",
+      "category": "grip",
+      "label": "握把"
+    },
+    {
+      "modifier": "shift",
+      "mouse_button": "middle",
+      "category": "stock",
+      "label": "枪托"
+    }
+  ],
+  "gun_attachments": {
+    "UMP5": {"muzzle": true, "grip": true, "stock": false},
+    "MP5k": {"muzzle": true, "grip": true, "stock": true},
+    "M416": {"muzzle": true, "grip": true, "stock": true},
+    "ACE32": {"muzzle": true, "grip": true, "stock": true},
+    "Beryl M762": {"muzzle": true, "grip": true, "stock": false},
+    "AUG": {"muzzle": true, "grip": true, "stock": false}
+  }
 }

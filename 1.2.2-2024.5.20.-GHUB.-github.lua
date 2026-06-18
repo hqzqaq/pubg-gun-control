@@ -36,6 +36,42 @@
 --1-2024.5.调整了M762的弹道，特别调整了后15发，虽然不确定是否有用。添加ctrl+G4为ACE32,并添加游戏灵敏度备注（常规50垂直1.4瞄准40开镜45-2倍40-3倍30-4 6 8 15倍都是50，鼠标灵敏度为1400DPI，屏幕分辨率为1080，理论上分辨率灵敏度一样的前提下可以达到和我同样的压枪效果）
 --2-2024.5.新增了lalt+G5为AUG。注释：lalt为左alt，ralt为右alt。小科普：l和r分别是英语left和right首字母
 --3-2024.5.修改第二行文字错误应为第二列，感谢群友[G502]PUBG/醉酒当歌提醒。
+-- ★★★ 配件压枪系数配置 ★★★
+-- 每种配件对后座力的乘法系数，最终系数 = 枪口 × 握把 × 枪托
+-- 1.0 表示无影响，< 1.0 表示减小后座（压枪幅度变小），> 1.0 表示增大后座
+attachmentConfig = {
+	-- 枪口配件 (muzzle) | ratio = 1 - 垂直后坐力控制%
+	muzzle = {
+		{ name = "none",     label = "无(裸配)",   ratio = 1.00 },
+		{ name = "comp",     label = "补偿器",     ratio = 0.85 },  -- 垂直+15%
+		{ name = "flash",    label = "消焰器",     ratio = 0.90 },  -- 垂直+10%
+		{ name = "silencer", label = "消音器",     ratio = 0.95 },  -- 腰射+5%
+		{ name = "brake",    label = "制退器",     ratio = 0.90 },
+	},
+	-- 握把配件 (grip) | ratio = 1 - 垂直后坐力控制%
+	grip = {
+		{ name = "none",      label = "无(裸配)",     ratio = 1.00 },
+		{ name = "vertical",  label = "垂直握把",     ratio = 0.85 },  -- 垂直+15%
+		{ name = "laser",     label = "斜向握把",     ratio = 0.88 },  -- 垂直+12%
+		{ name = "thumb",     label = "拇指握把",     ratio = 0.90 },  -- 垂直+10%
+		{ name = "half",      label = "半截式握把",   ratio = 0.92 },  -- 垂直+8%
+		{ name = "lightgrip", label = "轻型握把",     ratio = 0.60 },  -- 初始+40%
+	},
+	-- 枪托配件 (stock) | ratio = 1 - 枪口上扬/垂直后坐力控制%
+	stock = {
+		{ name = "none",     label = "无(裸配)",   ratio = 1.00 },
+		{ name = "tactical", label = "战术枪托",   ratio = 0.90 },  -- 枪口上扬+10%
+		{ name = "heavy",    label = "重型枪托",   ratio = 0.90 },  -- 垂直+10%
+	},
+}
+
+-- 枪械配件兼容性配置 (true = 不支持该配件槽位)
+gunNoStock = {
+	["Beryl M762"] = true,
+	["AUG"] = true,
+	["UMP45"] = true,
+}
+
 userInfo = {
 	debug = 1,
 	cpuLoad = 2,
@@ -64,17 +100,17 @@ userInfo = {
 	canUse = {
 		["7.62"] = {
 			-- 枪械             模式         系数        下蹲系数	  屏息系数	   裸配系数	     满配系数	    趴姿系数	  二倍系数    三倍系数
-			{ "Beryl M762",     1,          4.30, 		0.82,		1.40,		1.25,		2.00,		0.60,		1.24,		0.75},
+			{ "Beryl M762",     1,          8.65, 		0.82,		1.40,		1.25,		1.95,		0.30,		1.24,		0.75},
 			{ "AKM",            1,          1.95,		0.74,		1.38,		1.25,		2.12,		0.50,		1.15,		0.75},
 			{ "Groza",          1,          1.60,		0.70,		1.38,		1.25,		2.10,		0.50,		1.15,		0.75},
-			{ "ACE32",          1,          3.50,		0.80,		1.50,		1.25,		2.40,		0.00,		1.20,		0.75},
+			{ "ACE32",          1,          9.30,		0.80,		1.50,		1.25,		2.40,		0.00,		1.20,		0.75},
 			{ "DP-28",          0,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50,		1.10,		0.75},
 			{ "MK47",           2,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50,		1.10,		0.75},
 		},
 		["5.56"] = {
 			-- 枪械             模式         系数		下蹲系数	      屏息系数	     裸配系数      满配系数	    趴姿系数	  二倍系数    三倍系数
-			{ "AUG",            1,          1.85,		0.80,		1.38,		1.90,		4.45,		0.50,		1.15,		0.72},
-			{ "M416",           1,          1.85,		0.80,		1.38,		2.50, 		4.64,		0.50,		1.19,		0.70},
+			{ "AUG",            1,          8.15,		0.80,		1.30,		1.90,		4.40,		0.50,		1.15,		0.72},
+			{ "M416",	    1,          9.75,		0.80,		1.38,		2.50, 		4.64,		0.50,		1.19,		0.70},
 			{ "P90",            1,          1.80,		0.85,		1.38,		1.25,		2.60,		0.50,		1.15,		0.70},
 			{ "M249",           1,          1.50,		0.80,		1.38,		1.25,		2.60,		0.50,		1.15,		0.70},
 			{ "M16A4",          2,          1.50,		0.80,		1.38,		1.25,		3.20,		0.50,		1.15,		0.70},
@@ -90,13 +126,13 @@ userInfo = {
 			-- 枪械             模式         系数		  下蹲系数	   屏息系数	    裸配系数	    满配系数      趴姿系数	  二倍系数    三倍系数
 			{ "Vector",         0,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50,		1.10,		0.70},
 			{ "Micro UZI",      0,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50,		1.10,		0.70},
-			{ "UMP45",          1,          0.90,		0.80,		1.38,		1.25,		4.90,		0.50,		1.40,		0.90},
-			{ "MP5K",           1,          0.75,		0.80,		1.38,		1.25,		6.90,		0.50,		1.20,		0.70},
+			{ "UMP45",          1,          5.70,		0.80,		1.30,		1.25,		4.90,		0.50,		1.40,		0.90},
+			{ "MP5K",           1,          6.50,		0.80,		1.20,		1.25,		6.90,		0.50,		1.20,		0.70},
 		},
-	},
 
 
 	},
+
 
 	-- G键自定义绑定，多余的组合键可以删除
 	-- 可绑定指令请参考:
@@ -113,7 +149,7 @@ userInfo = {
 		["G10"] = "",
 		["G11"] = "",
 		-- lalt + G
-		["lalt + G3"] = "",
+		["lalt + G3"] = "cycle_muzzle",
 		["lalt + G4"] = "UMP45",
 		["lalt + G5"] = "MP5K",
 		["lalt + G6"] = "",
@@ -123,7 +159,7 @@ userInfo = {
 		["lalt + G10"] = "",
 		["lalt + G11"] = "",
 		-- lctrl + G
-		["lctrl + G3"] = "",
+		["lctrl + G3"] = "cycle_grip",
 		["lctrl + G4"] = "ACE32",
 		["lctrl + G5"] = "M416",
 		["lctrl + G6"] = "",
@@ -133,12 +169,12 @@ userInfo = {
 		["lctrl + G10"] = "",
 		["lctrl + G11"] = "",
 		-- lshift + G
-		["lshift + G3"] = "",
+		["lshift + G3"] = "cycle_stock",
 		["lshift + G4"] = "AUG",
 		["lshift + G5"] = "Beryl M762",
-		["lshift + G6"] = "",
-		["lshift + G7"] = "",
-		["lshift + G8"] = "",
+		["lshift + G6"] = "stock_1",
+		["lshift + G7"] = "stock_2",
+		["lshift + G8"] = "stock_3",
 		["lshift + G9"] = "",
 		["lshift + G10"] = "",
 		["lshift + G11"] = "",
@@ -156,9 +192,9 @@ userInfo = {
 		["rctrl + G3"] = "",
 		["rctrl + G4"] = "lock_state",
 		["rctrl + G5"] = "scopeX1",
-		["rctrl + G6"] = "",
-		["rctrl + G7"] = "",
-		["rctrl + G8"] = "",
+		["rctrl + G6"] = "cycle_muzzle",
+		["rctrl + G7"] = "cycle_grip",
+		["rctrl + G8"] = "cycle_stock",
 		["rctrl + G9"] = "",
 		["rctrl + G10"] = "",
 		["rctrl + G11"] = "",
@@ -166,12 +202,12 @@ userInfo = {
 		["rshift + G3"] = "",
 		["rshift + G4"] = "",
 		["rshift + G5"] = "",
-		["rshift + G6"] = "",
-		["rshift + G7"] = "",
-		["rshift + G8"] = "",
-		["rshift + G9"] = "",
-		["rshift + G10"] = "",
-		["rshift + G11"] = "",
+		["rshift + G6"] = "muzzle_4",
+		["rshift + G7"] = "grip_1",
+		["rshift + G8"] = "grip_2",
+		["rshift + G9"] = "grip_3",
+		["rshift + G10"] = "grip_4",
+		["rshift + G11"] = "grip_5",
 		-- 非鼠标G键，可以使键盘或者耳机上的G键，默认使用键盘G键，请确保你使用的是可编程的罗技键盘 | F1~12 (Non-mouse G-key)
 		["F1"] = "Beryl M762|scopeX1",
 		["F2"] = "ACE32|scopeX1",
@@ -181,9 +217,9 @@ userInfo = {
 		["F6"] = "Groza|scopeX1",
 		["F7"] = "M249|scopeX1",
 		["F8"] = "P90|scopeX1",
-		["F9"] = "",
-		["F10"] = "",
-		["F11"] = "",
+		["F9"] = "cycle_muzzle",
+		["F10"] = "cycle_grip",
+		["F11"] = "cycle_stock",
 		["F12"] = "",
 		-- lalt + 数字键 (alt + 1~8)
 		["lalt + 1"] = "ACE32",
@@ -236,6 +272,10 @@ pubg = {
 	G1 = false, -- G1键状态
 	currentTime = 0, -- 此刻
 	bulletIndex = 0, -- 第几颗子弹
+	-- 配件状态 (索引，1 = 第一个选项)
+	muzzleIndex = 1,
+	gripIndex = 1,
+	stockIndex = 1,
 }
 
 pubg.xLengthForDebug = pubg.generalSensitivityRatio * 0 -- 调试模式下的水平移动单元长度
@@ -1024,9 +1064,16 @@ function pubg.getRealY (options, y)
 	if userInfo.aimingSettings == "ctrlmode" and IsModifierPressed("lshift") then
 		realY = realY * options.BreathRatio
 	end
--- 满配压枪 (默认始终生效)
+-- 配件压枪系数 (枪口 × 握把 × 枪托)
 	if userInfo.aimingSettings == "ctrlmode" then
-		realY = realY * options.ManpeiRatio
+		local muzzleRatio = attachmentConfig.muzzle[pubg.muzzleIndex].ratio
+		local gripRatio = attachmentConfig.grip[pubg.gripIndex].ratio
+		local stockRatio = 1.0
+		local currentGun = pubg.getCurrentGunName()
+		if not gunNoStock[currentGun] then
+			stockRatio = attachmentConfig.stock[pubg.stockIndex].ratio
+		end
+		realY = realY * muzzleRatio * gripRatio * stockRatio
 	end
 -- 趴姿压枪
 	if userInfo.aimingSettings == "ctrlmode" and IsModifierPressed("lalt") then
@@ -1067,6 +1114,137 @@ function pubg.setBulletType (bulletType)
 	end
 
 	pubg.changeIsStart(true)
+end
+
+--[[ 获取当前枪械名称 ]]
+function pubg.getCurrentGunName ()
+	if pubg.bulletType ~= "" and pubg.gun[pubg.bulletType] and pubg.gun[pubg.bulletType][pubg.gunIndex] then
+		return pubg.gun[pubg.bulletType][pubg.gunIndex]
+	end
+	return ""
+end
+
+--[[ 切换配件 ]]
+function pubg.setAttachment (category, index)
+	if pubg.stateLocked then
+		OutputLogMessage("========================================\n")
+		OutputLogMessage("【锁定拦截】配件切换被阻止！当前状态已锁定\n")
+		OutputLogMessage("  提示: 按下 右Ctrl+G4 解锁后可切换\n")
+		OutputLogMessage("========================================\n")
+		return
+	end
+
+	-- 无枪托的枪禁止切换枪托
+	if category == "stock" then
+		local currentGun = pubg.getCurrentGunName()
+		if gunNoStock[currentGun] then
+			OutputLogMessage("========================================\n")
+			OutputLogMessage("【配件限制】%s 不支持枪托配件\n", currentGun)
+			OutputLogMessage("========================================\n")
+			return
+		end
+	end
+
+	local config = attachmentConfig[category]
+	if not config or index < 1 or index > #config then return end
+
+	if category == "muzzle" then
+		pubg.muzzleIndex = index
+	elseif category == "grip" then
+		pubg.gripIndex = index
+	elseif category == "stock" then
+		pubg.stockIndex = index
+	end
+
+	pubg.printAttachmentLog()
+end
+
+function pubg.cycleAttachment (category)
+	if pubg.stateLocked then
+		OutputLogMessage("========================================\n")
+		OutputLogMessage("【锁定拦截】配件切换被阻止！当前状态已锁定\n")
+		OutputLogMessage("  提示: 按下 右Ctrl+G4 解锁后可切换\n")
+		OutputLogMessage("========================================\n")
+		return
+	end
+
+	-- 无枪托的枪禁止循环枪托
+	if category == "stock" then
+		local currentGun = pubg.getCurrentGunName()
+		if gunNoStock[currentGun] then
+			OutputLogMessage("========================================\n")
+			OutputLogMessage("【配件限制】%s 不支持枪托配件\n", currentGun)
+			OutputLogMessage("========================================\n")
+			return
+		end
+	end
+
+	local config = attachmentConfig[category]
+	if not config then return end
+
+	local currentIndex = 1
+	if category == "muzzle" then
+		currentIndex = pubg.muzzleIndex
+	elseif category == "grip" then
+		currentIndex = pubg.gripIndex
+	elseif category == "stock" then
+		currentIndex = pubg.stockIndex
+	end
+
+	local nextIndex = (currentIndex % #config) + 1
+	pubg.setAttachment(category, nextIndex)
+end
+
+--[[ 打印配件切换日志 ]]
+function pubg.printAttachmentLog ()
+	local muzzle = attachmentConfig.muzzle[pubg.muzzleIndex]
+	local grip = attachmentConfig.grip[pubg.gripIndex]
+	local stock = attachmentConfig.stock[pubg.stockIndex]
+	local currentGun = pubg.getCurrentGunName()
+	local hasStock = not gunNoStock[currentGun]
+	local totalRatio = muzzle.ratio * grip.ratio
+	if hasStock then
+		totalRatio = totalRatio * stock.ratio
+	end
+
+	OutputLogMessage("========================================\n")
+	OutputLogMessage("【配件切换】当前枪械: %s\n", currentGun)
+	OutputLogMessage("  枪口: %s (%.2f)\n", muzzle.label, muzzle.ratio)
+	OutputLogMessage("  握把: %s (%.2f)\n", grip.label, grip.ratio)
+	if hasStock then
+		OutputLogMessage("  枪托: %s (%.2f)\n", stock.label, stock.ratio)
+	else
+		OutputLogMessage("  枪托: 不支持\n")
+	end
+	OutputLogMessage("  综合系数: %.2f\n", totalRatio)
+	OutputLogMessage("========================================\n")
+end
+
+function pubg.setMuzzle (cmd)
+	local index = tonumber(string.match(cmd, "muzzle_(%d+)"))
+	if index then pubg.setAttachment("muzzle", index) end
+end
+
+function pubg.setGrip (cmd)
+	local index = tonumber(string.match(cmd, "grip_(%d+)"))
+	if index then pubg.setAttachment("grip", index) end
+end
+
+function pubg.setStock (cmd)
+	local index = tonumber(string.match(cmd, "stock_(%d+)"))
+	if index then pubg.setAttachment("stock", index) end
+end
+
+function pubg.cycleMuzzle ()
+	pubg.cycleAttachment("muzzle")
+end
+
+function pubg.cycleGrip ()
+	pubg.cycleAttachment("grip")
+end
+
+function pubg.cycleStock ()
+	pubg.cycleAttachment("stock")
 end
 
 --[[ set current scope ]]
@@ -1175,6 +1353,40 @@ function pubg.toggleLockState ()
 	OutputLogMessage("========================================\n")
 end
 
+--[[ 打印枪械切换完整日志 ]]
+function pubg.printGunSwitchLog (gunName)
+	local scopeNameMap = {
+		["scopeX1"] = "基础倍镜(红点/全息/侧瞄)",
+		["scopeX2"] = "二倍镜",
+		["scopeX3"] = "三倍镜",
+		["scopeX4"] = "四倍镜",
+		["scopeX6"] = "六倍镜"
+	}
+	local scopeName = scopeNameMap[pubg.scope_current] or pubg.scope_current
+	local muzzle = attachmentConfig.muzzle[pubg.muzzleIndex]
+	local grip = attachmentConfig.grip[pubg.gripIndex]
+	local stock = attachmentConfig.stock[pubg.stockIndex]
+	local hasStock = not gunNoStock[gunName]
+	local attachRatio = muzzle.ratio * grip.ratio
+	if hasStock then
+		attachRatio = attachRatio * stock.ratio
+	end
+
+	OutputLogMessage("========================================\n")
+	OutputLogMessage("【枪械切换】%s\n", gunName)
+	OutputLogMessage("  弹药: %s\n", pubg.bulletType)
+	OutputLogMessage("  倍镜: %s (%s)\n", pubg.scope_current, scopeName)
+	OutputLogMessage("  枪口: %s (%.2f)\n", muzzle.label, muzzle.ratio)
+	OutputLogMessage("  握把: %s (%.2f)\n", grip.label, grip.ratio)
+	if hasStock then
+		OutputLogMessage("  枪托: %s (%.2f)\n", stock.label, stock.ratio)
+	else
+		OutputLogMessage("  枪托: 不支持\n")
+	end
+	OutputLogMessage("  配件综合系数: %.2f\n", attachRatio)
+	OutputLogMessage("========================================\n")
+end
+
 --[[ set current gun ]]
 function pubg.setGun (gunName)
 	if pubg.stateLocked then
@@ -1219,7 +1431,13 @@ function pubg.setGun (gunName)
 
 	end
 
+	-- 无枪托的枪自动重置枪托为裸配
+	if gunNoStock[gunName] then
+		pubg.stockIndex = 1
+	end
+
 	pubg.changeIsStart(true)
+	pubg.printGunSwitchLog(gunName)
 end
 
 --[[ Consider all available firearms as an entire list ]]
@@ -1491,13 +1709,23 @@ function pubg.runCmd (cmd)
 			pubg.changeIsStart(false)
 		end,
 		["lock_state"] = pubg.toggleLockState,
+		["cycle_muzzle"] = pubg.cycleMuzzle,
+		["cycle_grip"] = pubg.cycleGrip,
+		["cycle_stock"] = pubg.cycleStock,
 	}
 
 	local cmdGroup = string.split(cmd, '|')
 
 	for i = 1, #cmdGroup do
 		local _cmd = cmdGroup[i]
-		if switch[_cmd] then
+		-- 配件命令模式匹配 (muzzle_1, grip_2, stock_3)
+		if string.match(_cmd, "^muzzle_%d+$") then
+			pubg.setMuzzle(_cmd)
+		elseif string.match(_cmd, "^grip_%d+$") then
+			pubg.setGrip(_cmd)
+		elseif string.match(_cmd, "^stock_%d+$") then
+			pubg.setStock(_cmd)
+		elseif switch[_cmd] then
 			switch[_cmd](_cmd)
 		end
 	end
@@ -1563,6 +1791,16 @@ function pubg.outputLogGunInfo ()
 	}
 	local scopeName = scopeNameMap[pubg.scope_current] or pubg.scope_current
 	local lockStatus = pubg.stateLocked and "LOCKED" or "UNLOCKED"
+	local muzzle = attachmentConfig.muzzle[pubg.muzzleIndex]
+	local grip = attachmentConfig.grip[pubg.gripIndex]
+	local stock = attachmentConfig.stock[pubg.stockIndex]
+	local hasStock = not gunNoStock[gunName]
+	local attachRatio = muzzle.ratio * grip.ratio
+	local stockText = "不支持"
+	if hasStock then
+		attachRatio = attachRatio * stock.ratio
+		stockText = stock.label .. " " .. string.format("%.2f", stock.ratio)
+	end
 
 	return table.concat({
 		"Lock state: [ " .. lockStatus .. " ] (RightCtrl+G4 to toggle)\n",
@@ -1570,6 +1808,10 @@ function pubg.outputLogGunInfo ()
 		"Currently series: [ ", k, " ]\n",
 		"Currently index in series: [ ", i, " / ", #pubg.gun[k], " ]\n",
 		"Currently index in canUse: [ ", pubg.allCanUse_index, " / ", pubg.allCanUse_count, " ]\n",
+		"Attachment: muzzle[", muzzle.label, " ", string.format("%.2f", muzzle.ratio),
+		 "] grip[", grip.label, " ", string.format("%.2f", grip.ratio),
+		 "] stock[", stockText,
+		 "] = ", string.format("%.2f", attachRatio), "\n",
 		"Recoil table of [ ", gunName, " ]:\n",
 		pubg.outputLogRecoilTable(),
 	})

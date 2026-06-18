@@ -19,8 +19,8 @@ from typing import Final
 
 logger = logging.getLogger(__name__)
 
-_WINDOW_WIDTH: Final[int] = 200
-_WINDOW_HEIGHT: Final[int] = 60
+_WINDOW_WIDTH: Final[int] = 180
+_WINDOW_HEIGHT: Final[int] = 55
 _WINDOW_X: Final[int] = 0
 _WINDOW_Y: Final[int] = 0
 
@@ -60,6 +60,7 @@ _TOPMOST_THREAD_INTERVAL: Final[float] = 0.1
 _TYPE_TEXT: Final[str] = "text"
 _TYPE_LOCK: Final[str] = "lock"
 _TYPE_SCOPE: Final[str] = "scope"
+_TYPE_ATTACHMENT: Final[str] = "attachment"
 
 _user32 = ctypes.windll.user32
 _kernel32 = ctypes.windll.kernel32
@@ -95,6 +96,7 @@ class OverlayWindow:
         self.current_text: str = ""
         self.locked: bool = False
         self.scope_mode: int = 1
+        self.attachment_texts: dict[str, str] = {"muzzle": "", "grip": "", "stock": ""}
         self._pending: queue.Queue[tuple[str, str | bool | int]] = queue.Queue()
         self._topmost_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
@@ -287,10 +289,10 @@ class OverlayWindow:
         self.scope_label = tk.Label(
             self.root,
             text="1",
-            font=tkfont.Font(family=_FONT_FAMILY, size=14, weight=_FONT_WEIGHT),
+            font=tkfont.Font(family=_FONT_FAMILY, size=12, weight=_FONT_WEIGHT),
             fg=_COLOR_FG_DEFAULT,
             bg=_COLOR_BG_DEFAULT,
-            padx=2,
+            padx=1,
             pady=0,
         )
         self.scope_label.place(x=2, y=2)
@@ -298,13 +300,28 @@ class OverlayWindow:
         self.label = tk.Label(
             self.root,
             text="无",
-            font=tkfont.Font(family=_FONT_FAMILY, size=_FONT_SIZE, weight=_FONT_WEIGHT),
+            font=tkfont.Font(family=_FONT_FAMILY, size=16, weight=_FONT_WEIGHT),
             fg=_COLOR_FG_DEFAULT,
             bg=_COLOR_BG_DEFAULT,
-            padx=10,
-            pady=5,
+            padx=0,
+            pady=0,
         )
-        self.label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+        self.label.place(relx=0.35, rely=0.5, anchor=tk.CENTER)
+
+        self.attachment_labels: dict[str, tk.Label] = {}
+        _attach_font = tkfont.Font(family=_FONT_FAMILY, size=9, weight="normal")
+        for i, cat in enumerate(("muzzle", "grip", "stock")):
+            lbl = tk.Label(
+                self.root,
+                text="",
+                font=_attach_font,
+                fg=_COLOR_FG_DEFAULT,
+                bg=_COLOR_BG_DEFAULT,
+                padx=0,
+                pady=0,
+            )
+            lbl.place(relx=0.82, rely=0.15 + i * 0.35, anchor=tk.CENTER)
+            self.attachment_labels[cat] = lbl
 
         self.root.update_idletasks()
 
@@ -347,6 +364,8 @@ class OverlayWindow:
                     self._do_set_locked(bool(payload))
                 elif msg_type == _TYPE_SCOPE:
                     self._do_update_scope(int(payload))
+                elif msg_type == _TYPE_ATTACHMENT:
+                    self._do_update_attachment(str(payload))
         except queue.Empty:
             pass
 
@@ -374,11 +393,15 @@ class OverlayWindow:
             self.label.config(bg=_COLOR_BG_LOCKED, fg=_COLOR_FG_LOCKED)
             if self.scope_label:
                 self.scope_label.config(bg=_COLOR_BG_LOCKED, fg=_COLOR_FG_LOCKED)
+            for lbl in self.attachment_labels.values():
+                lbl.config(bg=_COLOR_BG_LOCKED, fg=_COLOR_FG_LOCKED)
         else:
             self.root.configure(bg=_COLOR_BG_DEFAULT)
             self.label.config(bg=_COLOR_BG_DEFAULT, fg=_COLOR_FG_DEFAULT)
             if self.scope_label:
                 self.scope_label.config(bg=_COLOR_BG_DEFAULT, fg=_COLOR_FG_DEFAULT)
+            for lbl in self.attachment_labels.values():
+                lbl.config(bg=_COLOR_BG_DEFAULT, fg=_COLOR_FG_DEFAULT)
 
         self.label.config(text=self.current_text)
 
@@ -389,6 +412,16 @@ class OverlayWindow:
         if scope_mode != self.scope_mode:
             self.scope_mode = scope_mode
             self.scope_label.config(text=str(scope_mode))
+
+    def _do_update_attachment(self, text: str) -> None:
+        if self.root is None:
+            return
+        if ":" in text:
+            cat, name = text.split(":", 1)
+            self.attachment_texts[cat] = name
+            lbl = self.attachment_labels.get(cat)
+            if lbl:
+                lbl.config(text=name)
 
     def update_text(self, text: str) -> None:
         if self.root is None or self.label is None:
@@ -404,6 +437,11 @@ class OverlayWindow:
         if self.root is None or self.scope_label is None:
             return
         self._pending.put((_TYPE_SCOPE, scope_mode))
+
+    def update_attachment(self, text: str) -> None:
+        if self.root is None:
+            return
+        self._pending.put((_TYPE_ATTACHMENT, text))
 
     def show(self) -> None:
         if self.root:

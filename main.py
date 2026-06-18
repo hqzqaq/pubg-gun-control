@@ -10,7 +10,7 @@ import logging
 import sys
 import threading
 
-from pubg_gun_control.config_manager import load_config, save_config
+from pubg_gun_control.config_manager import load_config, save_config, load_attachments, load_gun_attachments
 from pubg_gun_control.input_listener import InputListener
 from pubg_gun_control.overlay_window import OverlayWindow
 from pubg_gun_control.settings_window import SettingsWindow
@@ -29,6 +29,8 @@ class GunControlApp:
         self._running = False
         self._lock = threading.Lock()
         self._shortcuts: list[dict[str, str]] = load_config()
+        self._attachments: list[dict[str, str]] = load_attachments()
+        self._gun_attachments: dict[str, dict[str, bool]] = load_gun_attachments()
 
     def _on_gun_selected(self, gun_name: str) -> None:
         with self._lock:
@@ -48,6 +50,28 @@ class GunControlApp:
                 self.overlay.set_scope_mode(scope_mode)
             logger.info("倍镜模式切换为 %d 倍镜", scope_mode)
 
+    _ATTACHMENT_SHORT: dict[str, dict[str, str]] = {
+        "muzzle": {"无": "无", "补偿器": "补偿器", "消焰器": "消焰器", "消音器": "消音器", "制退器": "制退器"},
+        "grip": {"无": "无", "垂直": "垂直握把", "斜向": "斜向握把", "拇指": "拇指握把", "半截": "半截握把", "轻型": "轻型握把"},
+        "stock": {"无": "无", "战术": "战术枪托", "重型": "重型枪托"},
+    }
+
+    def _on_attachment_changed(self, category: str, name: str) -> None:
+        short = self._ATTACHMENT_SHORT.get(category, {}).get(name, name)
+        with self._lock:
+            if self.overlay.is_created():
+                self.overlay.update_attachment(f"{category}:{short}")
+        logger.info("配件切换: %s -> %s", category, short)
+
+    def _on_reset(self) -> None:
+        with self._lock:
+            if self.overlay.is_created():
+                self.overlay.update_text("无")
+                self.overlay.set_scope_mode(1)
+                for cat in ("muzzle", "grip", "stock"):
+                    self.overlay.update_attachment(f"{cat}:无")
+        logger.info("已重置所有状态")
+
     def _on_exit(self) -> None:
         self.stop()
 
@@ -56,20 +80,26 @@ class GunControlApp:
             self.overlay.root.after(0, self._open_settings)
 
     def _open_settings(self) -> None:
-        SettingsWindow(self.overlay.root, self._shortcuts, self._on_settings_saved)
+        SettingsWindow(self.overlay.root, self._shortcuts, self._gun_attachments, self._on_settings_saved)
 
-    def _on_settings_saved(self, shortcuts: list[dict[str, str]]) -> None:
+    def _on_settings_saved(self, shortcuts: list[dict[str, str]], gun_attachments: dict[str, dict[str, bool]]) -> None:
         self._shortcuts = shortcuts
-        save_config(shortcuts)
+        self._gun_attachments = gun_attachments
+        save_config(shortcuts, gun_attachments=gun_attachments)
         if self.input_listener:
             self.input_listener.update_shortcuts(shortcuts)
+            self.input_listener.update_gun_attachments(gun_attachments)
         logger.info("设置已保存")
 
     def start(self) -> None:
         self._running = True
 
         self.overlay.create()
-        self.input_listener = InputListener(self._on_gun_selected, self._on_lock_changed, self._on_scope_changed, self._shortcuts)
+        self.input_listener = InputListener(
+            self._on_gun_selected, self._on_lock_changed, self._on_scope_changed,
+            self._on_attachment_changed, self._on_reset, self._shortcuts, self._attachments,
+            self._gun_attachments,
+        )
         self.input_listener.start()
 
         self.tray_icon = TrayIcon(self._on_exit, self._on_settings)
@@ -115,11 +145,14 @@ def main() -> int:
     logger.info("    LCtrl + 鼠标后退键 = ACE32")
     logger.info("    LShift + 鼠标前进键 = Beryl M762")
     logger.info("    LShift + 鼠标后退键 = AUG")
+    logger.info("    LAlt + 鼠标中键(G3) = 循环切换枪口")
+    logger.info("    LCtrl + 鼠标中键(G3) = 循环切换握把")
+    logger.info("    LShift + 鼠标中键(G3) = 循环切换枪托")
     logger.info("  - 大写锁定关闭时：显示 '无'")
     logger.info("  - 按 G/3/4/5 或 Tab 键取消压枪模式")
-    logger.info("  - Ctrl + Alt = 锁定/解锁当前枪械（锁定后无法切换，窗口变黄色）")
-    logger.info("  - RAlt + 鼠标G5键 = 切换2倍镜/1倍镜")
-    logger.info("  - RAlt + 鼠标G4键 = 切换3倍镜/1倍镜")
+    logger.info("  - RCtrl + 鼠标后退键 = 锁定/解锁")
+    logger.info("  - RAlt + 鼠标G5键 = 切换2倍镜")
+    logger.info("  - RAlt + 鼠标G4键 = 切换3倍镜")
     logger.info("  - 右键点击托盘图标可退出程序")
 
     app = GunControlApp()

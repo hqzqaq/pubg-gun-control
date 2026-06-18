@@ -1,11 +1,11 @@
 """
 设置窗口模块
 
-提供快捷键文本配置的可视化编辑界面
+提供快捷键文本配置和配件勾选的可视化编辑界面
 
 @author huquanzhi
 @since 2026-04-18 19:38
-@version 1.0
+@version 2.0
 """
 
 import tkinter as tk
@@ -27,16 +27,23 @@ _MOUSE_BUTTON_DISPLAY: dict[str, str] = {
 class SettingsWindow:
     """快捷键文本配置窗口"""
 
+    _COLUMNS = 6
+    _ATTACHMENT_COLS = ("muzzle", "grip", "stock")
+    _ATTACHMENT_LABELS = {"muzzle": "枪口", "grip": "握把", "stock": "枪托"}
+
     def __init__(
         self,
         parent: tk.Tk,
         shortcuts: list[dict[str, str]],
-        on_save: Callable[[list[dict[str, str]]], None],
+        gun_attachments: dict[str, dict[str, bool]],
+        on_save: Callable[[list[dict[str, str]], dict[str, dict[str, bool]]], None],
     ) -> None:
         self.parent = parent
         self.shortcuts = list(shortcuts)
+        self.gun_attachments = dict(gun_attachments)
         self.on_save = on_save
         self.entries: list[tk.Entry] = []
+        self.checkboxes: dict[int, dict[str, tk.BooleanVar]] = {}
         self._create_window()
 
     def _create_window(self) -> None:
@@ -46,66 +53,83 @@ class SettingsWindow:
         self.window.attributes("-topmost", True)
         self.window.grab_set()
 
-        main_frame = ttk.Frame(self.window, padding=15)
+        main_frame = ttk.Frame(self.window, padding=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        title_label = ttk.Label(main_frame, text="快捷键文本配置", font=("Arial", 14, "bold"))
-        title_label.grid(row=0, column=0, columnspan=3, pady=(0, 15))
+        ttk.Label(main_frame, text="快捷键配置", font=("Arial", 13, "bold")).grid(
+            row=0, column=0, columnspan=self._COLUMNS, pady=(0, 10)
+        )
 
-        header_frame = ttk.Frame(main_frame)
-        header_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
-        ttk.Label(header_frame, text="修饰键", font=("Arial", 10, "bold"), width=12, anchor="center").grid(row=0, column=0, padx=5)
-        ttk.Label(header_frame, text="鼠标按键", font=("Arial", 10, "bold"), width=12, anchor="center").grid(row=0, column=1, padx=5)
-        ttk.Label(header_frame, text="显示文本", font=("Arial", 10, "bold"), width=18, anchor="center").grid(row=0, column=2, padx=5)
+        headers = ["修饰键", "鼠标按键", "显示文本", "枪口", "握把", "枪托"]
+        widths = [8, 8, 12, 4, 4, 4]
+        for col, (h, w) in enumerate(zip(headers, widths)):
+            ttk.Label(main_frame, text=h, font=("Arial", 9, "bold"), width=w, anchor="center").grid(
+                row=1, column=col, padx=3
+            )
 
-        ttk.Separator(main_frame, orient="horizontal").grid(row=2, column=0, columnspan=3, sticky="ew", pady=5)
+        ttk.Separator(main_frame, orient="horizontal").grid(
+            row=2, column=0, columnspan=self._COLUMNS, sticky="ew", pady=3
+        )
 
         for i, shortcut in enumerate(self.shortcuts):
             row = i + 3
-            modifier_text = _MODIFIER_DISPLAY.get(shortcut["modifier"], shortcut["modifier"])
-            mouse_text = _MOUSE_BUTTON_DISPLAY.get(shortcut["mouse_button"], shortcut["mouse_button"])
+            gun_name = shortcut["text"]
+            ga = self.gun_attachments.get(gun_name, {"muzzle": True, "grip": True, "stock": True})
 
-            ttk.Label(main_frame, text=modifier_text, width=12, anchor="center").grid(row=row, column=0, padx=5, pady=3)
-            ttk.Label(main_frame, text=mouse_text, width=12, anchor="center").grid(row=row, column=1, padx=5, pady=3)
+            mod_text = _MODIFIER_DISPLAY.get(shortcut["modifier"], shortcut["modifier"])
+            btn_text = _MOUSE_BUTTON_DISPLAY.get(shortcut["mouse_button"], shortcut["mouse_button"])
 
-            entry = ttk.Entry(main_frame, width=18, justify="center")
-            entry.insert(0, shortcut["text"])
-            entry.grid(row=row, column=2, padx=5, pady=3)
+            ttk.Label(main_frame, text=mod_text, width=8, anchor="center").grid(row=row, column=0, padx=3, pady=2)
+            ttk.Label(main_frame, text=btn_text, width=8, anchor="center").grid(row=row, column=1, padx=3, pady=2)
+
+            entry = ttk.Entry(main_frame, width=12, justify="center")
+            entry.insert(0, gun_name)
+            entry.grid(row=row, column=2, padx=3, pady=2)
             self.entries.append(entry)
 
+            self.checkboxes[i] = {}
+            for j, cat in enumerate(self._ATTACHMENT_COLS):
+                var = tk.BooleanVar(value=ga.get(cat, True))
+                cb = ttk.Checkbutton(main_frame, variable=var, width=2)
+                cb.grid(row=row, column=3 + j, padx=2, pady=2)
+                self.checkboxes[i][cat] = var
+
         btn_row = len(self.shortcuts) + 3
-        ttk.Separator(main_frame, orient="horizontal").grid(row=btn_row, column=0, columnspan=3, sticky="ew", pady=(10, 5))
+        ttk.Separator(main_frame, orient="horizontal").grid(
+            row=btn_row, column=0, columnspan=self._COLUMNS, sticky="ew", pady=(8, 3)
+        )
 
         btn_frame = ttk.Frame(main_frame)
-        btn_frame.grid(row=btn_row + 1, column=0, columnspan=3, pady=(5, 0))
+        btn_frame.grid(row=btn_row + 1, column=0, columnspan=self._COLUMNS, pady=(3, 0))
 
-        save_btn = ttk.Button(btn_frame, text="保存", command=self._on_save, width=10)
-        save_btn.pack(side=tk.LEFT, padx=10)
-
-        cancel_btn = ttk.Button(btn_frame, text="取消", command=self._on_cancel, width=10)
-        cancel_btn.pack(side=tk.LEFT, padx=10)
+        ttk.Button(btn_frame, text="保存", command=self._on_save, width=10).pack(side=tk.LEFT, padx=8)
+        ttk.Button(btn_frame, text="取消", command=self._on_cancel, width=10).pack(side=tk.LEFT, padx=8)
 
         self.window.update_idletasks()
-        width = self.window.winfo_width()
-        height = self.window.winfo_height()
-        x = (self.window.winfo_screenwidth() // 2) - (width // 2)
-        y = (self.window.winfo_screenheight() // 2) - (height // 2)
+        w = self.window.winfo_width()
+        h = self.window.winfo_height()
+        x = (self.window.winfo_screenwidth() // 2) - (w // 2)
+        y = (self.window.winfo_screenheight() // 2) - (h // 2)
         self.window.geometry(f"+{x}+{y}")
 
         self.window.protocol("WM_DELETE_WINDOW", self._on_cancel)
 
     def _on_save(self) -> None:
         new_shortcuts: list[dict[str, str]] = []
+        new_gun_attachments: dict[str, dict[str, bool]] = {}
+
         for i, shortcut in enumerate(self.shortcuts):
-            new_text = self.entries[i].get().strip()
-            if not new_text:
-                new_text = shortcut["text"]
+            new_text = self.entries[i].get().strip() or shortcut["text"]
             new_shortcuts.append({
                 "modifier": shortcut["modifier"],
                 "mouse_button": shortcut["mouse_button"],
                 "text": new_text,
             })
-        self.on_save(new_shortcuts)
+            new_gun_attachments[new_text] = {
+                cat: self.checkboxes[i][cat].get() for cat in self._ATTACHMENT_COLS
+            }
+
+        self.on_save(new_shortcuts, new_gun_attachments)
         self.window.destroy()
 
     def _on_cancel(self) -> None:

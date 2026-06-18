@@ -10,7 +10,7 @@ PUBG Gun Control - 枪械切换热键显示工具
 
 from importlib.metadata import version
 
-from .config_manager import load_config, save_config
+from .config_manager import load_config, save_config, load_attachments, load_gun_attachments
 from .input_listener import InputListener, ShortcutMatcher
 from .overlay_window import OverlayWindow
 from .settings_window import SettingsWindow

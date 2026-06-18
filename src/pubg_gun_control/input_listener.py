@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 _BUTTON_MAP: dict[str, Button] = {
     "forward": Button.x2,
     "backward": Button.x1,
+    "middle": Button.middle,
 }
 
 _BUTTON_REVERSE_MAP: dict[Button, str] = {v: k for k, v in _BUTTON_MAP.items()}
@@ -61,16 +62,28 @@ class InputListener:
     MOUSE_FORWARD = Button.x2
     MOUSE_BACKWARD = Button.x1
 
+    _ATTACHMENT_OPTIONS: dict[str, list[str]] = {
+        "muzzle": ["无", "补偿器", "消焰器", "消音器", "制退器"],
+        "grip": ["无", "垂直", "斜向", "拇指", "半截", "轻型"],
+        "stock": ["无", "战术", "重型"],
+    }
+
     def __init__(
         self,
         callback: Callable[[str], None],
         lock_callback: Callable[[bool], None] | None = None,
         scope_callback: Callable[[int], None] | None = None,
+        attachment_callback: Callable[[str, str], None] | None = None,
+        reset_callback: Callable[[], None] | None = None,
         shortcuts: list[dict[str, str]] | None = None,
+        attachment_shortcuts: list[dict[str, str]] | None = None,
+        gun_attachments: dict[str, dict[str, bool]] | None = None,
     ) -> None:
         self.callback = callback
         self.lock_callback = lock_callback
         self.scope_callback = scope_callback
+        self.attachment_callback = attachment_callback
+        self.reset_callback = reset_callback
         self.keyboard_listener: keyboard.Listener | None = None
         self.mouse_listener: mouse.Listener | None = None
 
@@ -79,6 +92,7 @@ class InputListener:
         self.shift_pressed = False
         self.alt_r_pressed = False
         self.ctrl_r_pressed = False
+        self.win_pressed = False
 
         self.current_text: str = "无"
         self.aim_mode_enabled = False
@@ -88,10 +102,24 @@ class InputListener:
         self.matcher = ShortcutMatcher(shortcuts or [])
         self.last_gun_name: str = self.matcher.first_gun_name
 
+        self._attachment_map: dict[tuple[str, str], str] = {}
+        self._attachment_indices: dict[str, int] = {"muzzle": 0, "grip": 0, "stock": 0}
+        self._build_attachment_map(attachment_shortcuts or [])
+
+        self._gun_attachments: dict[str, dict[str, bool]] = gun_attachments or {}
+
         self.scope_mode: int = 1
+
+    def _build_attachment_map(self, shortcuts: list[dict[str, str]]) -> None:
+        self._attachment_map = {
+            (s["modifier"], s["mouse_button"]): s["category"] for s in shortcuts
+        }
 
     def update_shortcuts(self, shortcuts: list[dict[str, str]]) -> None:
         self.matcher.update_shortcuts(shortcuts)
+
+    def update_gun_attachments(self, gun_attachments: dict[str, dict[str, bool]]) -> None:
+        self._gun_attachments = gun_attachments
 
     def is_caps_lock_on(self) -> bool:
         return ctypes.windll.user32.GetKeyState(0x14) & 0xFFFF != 0
@@ -123,19 +151,42 @@ class InputListener:
     def is_locked(self) -> bool:
         return self.locked
 
+    def _do_reset(self) -> None:
+        self._cancel_aim_mode()
+        self.locked = False
+        if self.lock_callback:
+            self.lock_callback(False)
+        self.scope_mode = 1
+        if self.scope_callback:
+            self.scope_callback(1)
+        for cat in self._attachment_indices:
+            self._attachment_indices[cat] = 0
+        if self.attachment_callback:
+            for cat in ("muzzle", "grip", "stock"):
+                self.attachment_callback(cat, "无")
+        logger.info("已重置所有状态")
+
     def _on_key_press(self, key: Key | keyboard.KeyCode | None) -> None:
         try:
             if key == Key.alt_l or key == Key.alt:
                 self.alt_pressed = True
+                if self.ctrl_pressed and self.win_pressed:
+                    self._do_reset()
             elif key == Key.alt_r or key == Key.alt_gr:
                 self.alt_r_pressed = True
                 logger.info("右Alt键按下: key=%s", key)
             elif key == Key.ctrl_l or key == Key.ctrl:
                 self.ctrl_pressed = True
+                if self.alt_pressed and self.win_pressed:
+                    self._do_reset()
             elif key == Key.ctrl_r:
                 self.ctrl_r_pressed = True
             elif key == Key.shift_l or key == Key.shift:
                 self.shift_pressed = True
+            elif key == Key.cmd_l or key == Key.cmd_r:
+                self.win_pressed = True
+                if self.ctrl_pressed and self.alt_pressed:
+                    self._do_reset()
             elif key == Key.caps_lock:
                 if time.monotonic() < self._ignore_caps_lock_until:
                     return
@@ -176,6 +227,8 @@ class InputListener:
                 self.ctrl_r_pressed = False
             elif key == Key.shift_l or key == Key.shift:
                 self.shift_pressed = False
+            elif key == Key.cmd_l or key == Key.cmd_r:
+                self.win_pressed = False
         except AttributeError:
             pass
 
@@ -224,10 +277,50 @@ class InputListener:
                     self.scope_callback(self.scope_mode)
                 return
 
+        attachment_cat = self._try_match_attachment(button)
+        if attachment_cat:
+            self._cycle_attachment(attachment_cat)
+            return
+
         gun_name = self._get_gun_name(button)
         if gun_name:
             self.current_text = gun_name
+            ga = self._gun_attachments.get(gun_name, {"muzzle": True, "grip": True, "stock": True})
+            for cat in self._ATTACHMENT_OPTIONS:
+                if not ga.get(cat, True):
+                    self._attachment_indices[cat] = 0
+                    if self.attachment_callback:
+                        self.attachment_callback(cat, "无")
             self.callback(self.current_text)
+
+    def _try_match_attachment(self, button: Button) -> str | None:
+        if not self.attachment_callback:
+            return None
+        mouse_btn = _BUTTON_REVERSE_MAP.get(button)
+        if mouse_btn is None:
+            return None
+        modifier = None
+        if self.alt_pressed:
+            modifier = "alt"
+        elif self.ctrl_pressed:
+            modifier = "ctrl"
+        elif self.shift_pressed:
+            modifier = "shift"
+        if modifier is None:
+            return None
+        return self._attachment_map.get((modifier, mouse_btn))
+
+    def _cycle_attachment(self, category: str) -> None:
+        ga = self._gun_attachments.get(self.current_text, {"muzzle": True, "grip": True, "stock": True})
+        if not ga.get(category, True):
+            logger.info("%s 不支持 %s 配件", self.current_text, category)
+            return
+        options = self._ATTACHMENT_OPTIONS.get(category, [])
+        if not options:
+            return
+        self._attachment_indices[category] = (self._attachment_indices[category] + 1) % len(options)
+        current_name = options[self._attachment_indices[category]]
+        self.attachment_callback(category, current_name)
 
     def _get_gun_name(self, button: Button) -> str | None:
         modifier_count = sum([self.alt_pressed, self.ctrl_pressed, self.shift_pressed])
