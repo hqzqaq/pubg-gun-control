@@ -21,7 +21,16 @@ matplotlib.use("QtAgg")  # 必须在导入 pyplot 之前
 from matplotlib import font_manager  # noqa: E402
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg  # noqa: E402
 from matplotlib.figure import Figure  # noqa: E402
-from PySide6.QtWidgets import QSizePolicy, QVBoxLayout, QWidget  # noqa: E402
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (  # noqa: E402
+    QCheckBox,
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ..ballistic_data import AttachmentCategory, AttachmentItem, GunCoefficients
 
@@ -183,8 +192,18 @@ class TrajectoryView(QWidget):
     """弹道轨迹预览图
 
     嵌入 matplotlib FigureCanvasQTAgg 到 PySide6 窗口。
-    显示两条轨迹：裸配（红）vs 当前配件（绿）。
+    支持 1x/2x/3x 倍镜切换与多倍镜叠加对比。
     """
+
+    # 倍镜到 GunCoefficients 字段的映射
+    _SCOPE_FIELDS = {1: "coef", 2: "scope2x", 3: "scope3x"}
+
+    # 倍镜配色（主轨迹用绿，叠加用黄/蓝）
+    _SCOPE_COLORS = {
+        1: "#4caf50",  # 绿
+        2: "#ffeb3b",  # 黄
+        3: "#2196f3",  # 蓝
+    }
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -192,12 +211,39 @@ class TrajectoryView(QWidget):
         self._muzzle: AttachmentItem | None = None
         self._grip: AttachmentItem | None = None
         self._stock: AttachmentItem | None = None
+        self._current_scope: int = 1
+        self._overlay_scopes: set[int] = set()
         self._build_ui()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
+        # 顶部工具栏
+        toolbar = QHBoxLayout()
+        toolbar.setContentsMargins(4, 4, 4, 0)
+
+        toolbar.addWidget(QLabel("当前瞄准镜:"))
+        self._scope_combo = QComboBox()
+        self._scope_combo.addItem("1 倍镜", userData=1)
+        self._scope_combo.addItem("2 倍镜", userData=2)
+        self._scope_combo.addItem("3 倍镜", userData=3)
+        self._scope_combo.setCurrentIndex(0)
+        self._scope_combo.currentIndexChanged.connect(self._on_scope_changed)
+        toolbar.addWidget(self._scope_combo)
+
+        toolbar.addSpacing(16)
+        toolbar.addWidget(QLabel("叠加对比:"))
+        self._overlay_checks: dict[int, QCheckBox] = {}
+        for scope, label in [(1, "1x"), (2, "2x"), (3, "3x")]:
+            cb = QCheckBox(label)
+            cb.stateChanged.connect(self._on_overlay_changed)
+            toolbar.addWidget(cb)
+            self._overlay_checks[scope] = cb
+        toolbar.addStretch(1)
+        layout.addLayout(toolbar)
+
+        # 画布
         self._figure = Figure(figsize=(5, 5), dpi=100, facecolor="#1e1e1e")
         self._canvas = FigureCanvasQTAgg(self._figure)
         self._canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -206,6 +252,24 @@ class TrajectoryView(QWidget):
         self._ax = self._figure.add_subplot(111)
         self._configure_axes()
         self._canvas.draw_idle()
+
+    def _on_scope_changed(self, _index: int) -> None:
+        self._current_scope = self._scope_combo.currentData()
+        self._redraw()
+
+    def _on_overlay_changed(self, _state: int) -> None:
+        self._overlay_scopes = {
+            s for s, cb in self._overlay_checks.items() if cb.isChecked()
+        }
+        self._redraw()
+
+    def _scope_factor_for(self, scope: int) -> float:
+        """返回某倍镜的系数取值。1x = 自身系数，2x/3x 取对应 scope2x/scope3x 字段。"""
+        if self._gun is None:
+            return 1.0
+        field = self._SCOPE_FIELDS[scope]
+        val = getattr(self._gun, field, 1.0)
+        return val if val > 0 else 1.0
 
     def _configure_axes(self) -> None:
         ax = self._ax
@@ -254,49 +318,83 @@ class TrajectoryView(QWidget):
             self._canvas.draw_idle()
             return
 
-        # 当前配件轨迹（绿）
-        cur_points = TrajectoryCalculator.calculate(
+        attach = self._current_attachment_multiplier()
+
+        # 主轨迹：当前瞄准镜 + 当前配件
+        main_pts = TrajectoryCalculator.calculate(
             self._gun,
-            attachment_multiplier=self._current_attachment_multiplier(),
+            scope_factor=self._scope_factor_for(self._current_scope),
+            attachment_multiplier=attach,
         )
-        if cur_points:
-            xs = [p.dx for p in cur_points]
-            ys = [p.dy for p in cur_points]
+        main_color = self._SCOPE_COLORS[self._current_scope]
+        if main_pts:
+            xs = [p.dx for p in main_pts]
+            ys = [p.dy for p in main_pts]
             self._ax.plot(
                 xs, ys,
-                color="#4caf50", linewidth=1.5, alpha=0.9,
-                marker="o", markersize=3, label="当前配置",
+                color=main_color, linewidth=1.8, alpha=0.95,
+                marker="o", markersize=3,
+                label=f"{self._current_scope}倍镜 · 当前配件",
             )
             # 标注首末发
             self._ax.annotate(
                 f"首发\n({xs[0]:.1f}, {ys[0]:.1f})",
                 xy=(xs[0], ys[0]), xytext=(8, 8),
                 textcoords="offset points",
-                color="#4caf50", fontsize=7,
+                color=main_color, fontsize=7,
             )
             self._ax.annotate(
                 f"末发\n({xs[-1]:.1f}, {ys[-1]:.1f})",
                 xy=(xs[-1], ys[-1]), xytext=(8, -12),
                 textcoords="offset points",
-                color="#4caf50", fontsize=7,
+                color=main_color, fontsize=7,
             )
 
-        # 裸配轨迹（红，对比）
-        bare_points = TrajectoryCalculator.calculate(
-            self._gun, attachment_multiplier=1.0,
+        # 裸配轨迹（红虚线，对应当前瞄准镜，无配件）
+        bare_pts = TrajectoryCalculator.calculate(
+            self._gun,
+            scope_factor=self._scope_factor_for(self._current_scope),
+            attachment_multiplier=1.0,
         )
-        if bare_points:
-            xs = [p.dx for p in bare_points]
-            ys = [p.dy for p in bare_points]
+        if bare_pts:
+            xs = [p.dx for p in bare_pts]
+            ys = [p.dy for p in bare_pts]
             self._ax.plot(
                 xs, ys,
-                color="#f44336", linewidth=1.0, alpha=0.6,
-                marker="x", markersize=3, label="裸配（对比）",
+                color="#f44336", linewidth=1.0, alpha=0.55,
+                linestyle="--",
+                marker="x", markersize=3,
+                label=f"{self._current_scope}倍镜 · 裸配",
             )
 
-        self._ax.legend(loc="upper right", fontsize=8, facecolor="#1e1e1e", edgecolor="#666", labelcolor="white")
+        # 叠加轨迹：其他倍镜（带当前配件）
+        for scope in sorted(self._overlay_scopes):
+            if scope == self._current_scope:
+                continue  # 当前瞄准镜已画
+            pts = TrajectoryCalculator.calculate(
+                self._gun,
+                scope_factor=self._scope_factor_for(scope),
+                attachment_multiplier=attach,
+            )
+            if not pts:
+                continue
+            xs = [p.dx for p in pts]
+            ys = [p.dy for p in pts]
+            self._ax.plot(
+                xs, ys,
+                color=self._SCOPE_COLORS[scope], linewidth=1.2, alpha=0.7,
+                linestyle=":",
+                marker="s", markersize=2.5,
+                label=f"{scope}倍镜 · 当前配件",
+            )
+
+        self._ax.legend(
+            loc="upper right", fontsize=7,
+            facecolor="#1e1e1e", edgecolor="#666", labelcolor="white",
+        )
         self._ax.set_title(
-            f"弹道轨迹 - {self._gun.name}", color="white", fontsize=12, fontweight="bold"
+            f"弹道轨迹 - {self._gun.name}",
+            color="white", fontsize=12, fontweight="bold",
         )
         # 等比例
         self._ax.set_aspect("equal", adjustable="datalim")

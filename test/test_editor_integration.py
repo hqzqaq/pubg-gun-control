@@ -215,6 +215,48 @@ def test_recent_files() -> None:
     clear_editor_recent()
 
 
+def test_scope_factor() -> None:
+    """倍镜系数应正确影响轨迹"""
+    import os
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+    from pubg_gun_control.editor_ui.trajectory_view import (
+        TrajectoryCalculator,
+        TrajectoryView,
+    )
+    if not QApplication.instance():
+        QApplication([])
+
+    config = LuaBallisticParser().parse(str(LUA_FILE))
+    m762 = config.find_gun("Beryl M762")
+
+    pts_1x = TrajectoryCalculator.calculate(m762, scope_factor=m762.coef)
+    pts_2x = TrajectoryCalculator.calculate(m762, scope_factor=m762.scope2x)
+    pts_3x = TrajectoryCalculator.calculate(m762, scope_factor=m762.scope3x)
+
+    assert len(pts_1x) == 30
+    assert len(pts_2x) == 30
+    assert len(pts_3x) == 30
+
+    dy_1x = pts_1x[-1].dy
+    dy_2x = pts_2x[-1].dy
+    dy_3x = pts_3x[-1].dy
+
+    print(f"  [INFO] 1x coef={m762.coef} dy={dy_1x:.2f}")
+    print(f"  [INFO] 2x coef={m762.scope2x} dy={dy_2x:.2f}")
+    print(f"  [INFO] 3x coef={m762.scope3x} dy={dy_3x:.2f}")
+    # 倍镜系数独立，不必单调；只验证各 scope 各自生成有效轨迹
+    assert dy_1x > 0 and dy_2x > 0 and dy_3x > 0
+
+    view = TrajectoryView()
+    view.update_view(m762)
+    assert view._scope_factor_for(1) == m762.coef
+    assert view._scope_factor_for(2) == m762.scope2x
+    assert view._scope_factor_for(3) == m762.scope3x
+    print("  [OK] TrajectoryView 倍镜映射正确")
+    view.deleteLater()
+
+
 def main() -> int:
     print("=" * 60)
     print("编辑器集成测试")
@@ -225,6 +267,7 @@ def main() -> int:
         ("编辑器主窗口", test_editor_window),
         ("预设管理器", test_preset_manager),
         ("最近文件", test_recent_files),
+        ("倍镜系数", test_scope_factor),
     ]
 
     failed = 0
