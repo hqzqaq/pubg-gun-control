@@ -16,6 +16,7 @@ A weapon switch display tool for PUBG, designed to work with Logitech G HUB reco
 - **Attachment Cycling**: Modifier key + mouse middle button cycles through muzzle/grip/stock attachments
 - **Scope Mode Switching**: RAlt + mouse side buttons switch between 2x/3x scope; current scope is shown at the top-left of the overlay
 - **One-Key Reset**: LCtrl + LAlt + Win resets all state (weapon, scope, attachments, lock)
+- **Voice Prompts for Key Actions**: Plays audio cues for recoil mode on/off, lock/unlock, and lock interception; can be toggled in the settings window
 - **Ballistic Coefficient Visual Editor**: Tray menu → "Open Editor" or run `main_editor.py` standalone; visually adjust 8 gun coefficients, mode (disabled/enabled/auto-click) and attachment combos with real-time trajectory preview
 - **Scope Switch Preview**: Editor supports 1x/2x/3x scope switching and multi-scope overlay comparison
 - **Preset Management**: Save/load/delete config presets (switch profiles by DPI/resolution/mouse model)
@@ -294,6 +295,13 @@ def get_default_config() -> list[dict[str, str]]:
 You also need to sync modify the `G_bind` configuration in `1.2.2-2024.5.20.-GHUB.-github.lua`.
 
 ## Changelog
+
+### v1.1.2 (2026-06-18)
+- **New**: Voice prompts for key actions; plays cues for recoil mode on/off, lock/unlock, and lock interception
+- **New**: "Enable Voice Prompts" checkbox in the settings window; voice toggle is persisted to `config.json`
+- **Improve**: New voice prompt interrupts currently playing prompt, avoiding delayed playback during rapid actions
+- **New**: `voice/` directory for WAV files, `src/pubg_gun_control/voice_prompt.py` provides async playback wrapper
+- **Test**: Added `test/test_voice_prompt.py` covering voice playback and lock interception logic
 
 ### v1.1.1 (2026-06-18)
 - **New**: Ballistic coefficient visual editor, launched via tray menu "Open Editor" or standalone `main_editor.py`

@@ -78,12 +78,14 @@ class InputListener:
         shortcuts: list[dict[str, str]] | None = None,
         attachment_shortcuts: list[dict[str, str]] | None = None,
         gun_attachments: dict[str, dict[str, bool]] | None = None,
+        voice_callback: Callable[[str], None] | None = None,
     ) -> None:
         self.callback = callback
         self.lock_callback = lock_callback
         self.scope_callback = scope_callback
         self.attachment_callback = attachment_callback
         self.reset_callback = reset_callback
+        self.voice_callback = voice_callback
         self.keyboard_listener: keyboard.Listener | None = None
         self.mouse_listener: mouse.Listener | None = None
 
@@ -139,6 +141,8 @@ class InputListener:
     def _cancel_aim_mode(self) -> None:
         if self.current_text != "无":
             self.last_gun_name = self.current_text
+            if self.voice_callback:
+                self.voice_callback("recoil_off")
         self.aim_mode_enabled = False
         self.current_text = "无"
         self.callback(self.current_text)
@@ -147,15 +151,20 @@ class InputListener:
         self.locked = not self.locked
         if self.lock_callback:
             self.lock_callback(self.locked)
+        if self.voice_callback:
+            self.voice_callback("lock_on" if self.locked else "lock_off")
 
     def is_locked(self) -> bool:
         return self.locked
 
     def _do_reset(self) -> None:
+        was_locked = self.locked
         self._cancel_aim_mode()
         self.locked = False
         if self.lock_callback:
             self.lock_callback(False)
+        if was_locked and self.voice_callback:
+            self.voice_callback("lock_off")
         self.scope_mode = 1
         if self.scope_callback:
             self.scope_callback(1)
@@ -193,6 +202,8 @@ class InputListener:
                 if self.current_text == "无":
                     self.aim_mode_enabled = True
                     self.current_text = self.last_gun_name
+                    if self.voice_callback:
+                        self.voice_callback("recoil_on")
                 else:
                     self._cancel_aim_mode()
                 self.callback(self.current_text)
@@ -205,6 +216,8 @@ class InputListener:
                         self.aim_mode_enabled = True
                         self.current_text = self.last_gun_name
                         self.callback(self.current_text)
+                        if self.voice_callback:
+                            self.voice_callback("recoil_on")
                     self._turn_on_caps_lock()
                 elif key.char == "2":
                     self._cancel_aim_mode()
@@ -250,6 +263,11 @@ class InputListener:
             return
 
         if self.locked:
+            if (
+                self._get_gun_name(button) is not None
+                or self._try_match_attachment(button) is not None
+            ) and self.voice_callback:
+                self.voice_callback("locked_action")
             return
 
         if self.alt_r_pressed:

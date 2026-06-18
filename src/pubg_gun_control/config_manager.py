@@ -108,10 +108,28 @@ def load_gun_attachments() -> dict[str, dict[str, bool]]:
         return get_default_gun_attachments()
 
 
+def load_voice_enabled() -> bool:
+    """读取语音提示开关状态，默认开启。"""
+    config_path = _get_config_path()
+    if not config_path.exists():
+        return True
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            data: dict[str, Any] = json.load(f)
+        voice_enabled = data.get("voice_enabled")
+        if isinstance(voice_enabled, bool):
+            return voice_enabled
+        return True
+    except (json.JSONDecodeError, OSError):
+        return True
+
+
 def save_config(
     shortcuts: list[dict[str, str]],
     attachments: list[dict[str, str]] | None = None,
     gun_attachments: dict[str, dict[str, bool]] | None = None,
+    voice_enabled: bool | None = None,
 ) -> None:
     config_path = _get_config_path()
     data: dict[str, Any] = {"shortcuts": shortcuts}
@@ -123,6 +141,10 @@ def save_config(
         data["gun_attachments"] = gun_attachments
     else:
         data["gun_attachments"] = load_gun_attachments()
+    if voice_enabled is not None:
+        data["voice_enabled"] = voice_enabled
+    else:
+        data["voice_enabled"] = load_voice_enabled()
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 

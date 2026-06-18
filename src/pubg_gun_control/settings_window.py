@@ -36,12 +36,14 @@ class SettingsWindow:
         parent: tk.Tk,
         shortcuts: list[dict[str, str]],
         gun_attachments: dict[str, dict[str, bool]],
-        on_save: Callable[[list[dict[str, str]], dict[str, dict[str, bool]]], None],
+        on_save: Callable[[list[dict[str, str]], dict[str, dict[str, bool]], bool], None],
+        voice_enabled: bool = True,
     ) -> None:
         self.parent = parent
         self.shortcuts = list(shortcuts)
         self.gun_attachments = dict(gun_attachments)
         self.on_save = on_save
+        self.voice_enabled_var = tk.BooleanVar(value=voice_enabled)
         self.entries: list[tk.Entry] = []
         self.checkboxes: dict[int, dict[str, tk.BooleanVar]] = {}
         self._create_window()
@@ -99,8 +101,16 @@ class SettingsWindow:
             row=btn_row, column=0, columnspan=self._COLUMNS, sticky="ew", pady=(8, 3)
         )
 
+        ttk.Checkbutton(
+            main_frame, text="启用语音提示", variable=self.voice_enabled_var
+        ).grid(row=btn_row + 1, column=0, columnspan=self._COLUMNS, pady=(3, 3))
+
+        ttk.Separator(main_frame, orient="horizontal").grid(
+            row=btn_row + 2, column=0, columnspan=self._COLUMNS, sticky="ew", pady=(3, 3)
+        )
+
         btn_frame = ttk.Frame(main_frame)
-        btn_frame.grid(row=btn_row + 1, column=0, columnspan=self._COLUMNS, pady=(3, 0))
+        btn_frame.grid(row=btn_row + 3, column=0, columnspan=self._COLUMNS, pady=(3, 0))
 
         ttk.Button(btn_frame, text="保存", command=self._on_save, width=10).pack(side=tk.LEFT, padx=8)
         ttk.Button(btn_frame, text="取消", command=self._on_cancel, width=10).pack(side=tk.LEFT, padx=8)
@@ -129,7 +139,8 @@ class SettingsWindow:
                 cat: self.checkboxes[i][cat].get() for cat in self._ATTACHMENT_COLS
             }
 
-        self.on_save(new_shortcuts, new_gun_attachments)
+        voice_enabled = self.voice_enabled_var.get()
+        self.on_save(new_shortcuts, new_gun_attachments, voice_enabled)
         self.window.destroy()
 
     def _on_cancel(self) -> None:

@@ -12,9 +12,10 @@ import sys
 import threading
 from pathlib import Path
 
-from pubg_gun_control.config_manager import load_config, save_config, load_attachments, load_gun_attachments
+from pubg_gun_control.config_manager import load_config, save_config, load_attachments, load_gun_attachments, load_voice_enabled
 from pubg_gun_control.input_listener import InputListener
 from pubg_gun_control.overlay_window import OverlayWindow
+from pubg_gun_control.voice_prompt import VoicePlayer
 from pubg_gun_control.settings_window import SettingsWindow
 from pubg_gun_control.tray_icon import TrayIcon
 
@@ -28,6 +29,7 @@ class GunControlApp:
 
     def __init__(self) -> None:
         self.overlay = OverlayWindow()
+        self.voice_player = VoicePlayer()
         self.input_listener: InputListener | None = None
         self.tray_icon: TrayIcon | None = None
         self._running = False
@@ -35,6 +37,8 @@ class GunControlApp:
         self._shortcuts: list[dict[str, str]] = load_config()
         self._attachments: list[dict[str, str]] = load_attachments()
         self._gun_attachments: dict[str, dict[str, bool]] = load_gun_attachments()
+        self._voice_enabled: bool = load_voice_enabled()
+        self.voice_player.enabled = self._voice_enabled
 
     def _on_gun_selected(self, gun_name: str) -> None:
         with self._lock:
@@ -84,7 +88,7 @@ class GunControlApp:
             self.overlay.root.after(0, self._open_settings)
 
     def _open_settings(self) -> None:
-        SettingsWindow(self.overlay.root, self._shortcuts, self._gun_attachments, self._on_settings_saved)
+        SettingsWindow(self.overlay.root, self._shortcuts, self._gun_attachments, self._on_settings_saved, voice_enabled=self._voice_enabled)
 
     def _on_open_editor(self) -> None:
         """从托盘菜单启动弹道编辑器（独立进程）"""
@@ -97,10 +101,12 @@ class GunControlApp:
         except OSError as exc:
             logger.error("启动编辑器失败: %s", exc)
 
-    def _on_settings_saved(self, shortcuts: list[dict[str, str]], gun_attachments: dict[str, dict[str, bool]]) -> None:
+    def _on_settings_saved(self, shortcuts: list[dict[str, str]], gun_attachments: dict[str, dict[str, bool]], voice_enabled: bool) -> None:
         self._shortcuts = shortcuts
         self._gun_attachments = gun_attachments
-        save_config(shortcuts, gun_attachments=gun_attachments)
+        self._voice_enabled = voice_enabled
+        self.voice_player.enabled = voice_enabled
+        save_config(shortcuts, gun_attachments=gun_attachments, voice_enabled=voice_enabled)
         if self.input_listener:
             self.input_listener.update_shortcuts(shortcuts)
             self.input_listener.update_gun_attachments(gun_attachments)
@@ -113,7 +119,7 @@ class GunControlApp:
         self.input_listener = InputListener(
             self._on_gun_selected, self._on_lock_changed, self._on_scope_changed,
             self._on_attachment_changed, self._on_reset, self._shortcuts, self._attachments,
-            self._gun_attachments,
+            self._gun_attachments, voice_callback=self.voice_player.play,
         )
         self.input_listener.start()
 
