@@ -16,6 +16,10 @@ A weapon switch display tool for PUBG, designed to work with Logitech G HUB reco
 - **Attachment Cycling**: Modifier key + mouse middle button cycles through muzzle/grip/stock attachments
 - **Scope Mode Switching**: RAlt + mouse side buttons switch between 2x/3x scope; current scope is shown at the top-left of the overlay
 - **One-Key Reset**: LCtrl + LAlt + Win resets all state (weapon, scope, attachments, lock)
+- **Ballistic Coefficient Visual Editor**: Tray menu → "Open Editor" or run `main_editor.py` standalone; visually adjust 8 gun coefficients, mode (disabled/enabled/auto-click) and attachment combos with real-time trajectory preview
+- **Scope Switch Preview**: Editor supports 1x/2x/3x scope switching and multi-scope overlay comparison
+- **Preset Management**: Save/load/delete config presets (switch profiles by DPI/resolution/mouse model)
+- **Lua Auto-Backup**: Editor automatically creates `.bak` backup on save
 - Works with Logitech G HUB recoil macros
 - `1.2.2-2024.5.20.-GHUB.-github.lua` is the recoil script, needs to be imported into G HUB, tutorials available on Bilibili etc.
 - `Mouse shortcuts are consistent with the recoil script. If you need to change shortcuts, weapon configurations, or recoil trajectory parameters, you can modify them yourself, AI can help with modifications`
@@ -157,12 +161,51 @@ pubg-gun-control/
 │   ├── input_listener.py   # Input listener module
 │   ├── overlay_window.py   # Overlay window module
 │   ├── settings_window.py  # Settings window module
-│   └── tray_icon.py        # System tray module
+│   ├── tray_icon.py        # System tray module
+│   ├── ballistic_data.py   # Ballistic data dataclasses (gun/attachment/config/preset)
+│   ├── lua_parser.py       # Lua parser/serializer (canUse / attachmentConfig / gunNoStock)
+│   ├── preset_manager.py   # Preset JSON persistence
+│   └── editor_ui/          # Ballistic editor UI sub-package
+│       ├── main_window.py       # Three-column main window
+│       ├── gun_list_panel.py    # Gun list grouped by ammo
+│       ├── gun_detail_panel.py  # 8 coefficients + mode editor
+│       ├── attachment_panel.py  # Attachment combos + full-load coefficient
+│       ├── trajectory_view.py   # Matplotlib trajectory chart
+│       └── preset_dialog.py     # Preset naming dialog
 ├── main.py                 # Main program entry
-├── config.json             # Shortcut configuration file
+├── main_editor.py          # Editor standalone entry
+├── config.json             # Shortcut config + editor recent files
 ├── pubg_gun_control.spec   # PyInstaller build config
-└── pyproject.toml          # Project config
+├── pyproject.toml          # Project config
+└── test/
+    ├── test_lua_parser.py        # Lua parser unit tests
+    └── test_editor_integration.py # Editor integration tests
 ```
+
+## Ballistic Coefficient Visual Editor
+
+Launch via tray menu "Open Editor" or run `uv run python main_editor.py` standalone.
+
+### Features
+
+- **Three-column layout**: Gun list (grouped by ammo) on the left / 8 coefficients in the middle / trajectory chart on the right
+- **8 coefficient editors**: Base, crouch, hold-breath, bare, full-load, prone, 2x scope, 3x scope (step 0.01)
+- **Mode switch**: 0 disabled / 1 enabled / 2 auto-click
+- **Attachment dropdowns**: 5 muzzle × 6 grip × 3 stock with real-time full-load coefficient
+- **Trajectory preview**: Matplotlib render comparing current config vs bare
+- **Scope switch**: Toggle 1x/2x/3x as main; overlay multiple scopes for comparison
+- **Preset management**: Save as named presets (DPI / resolution / mouse model profiles)
+- **Lua backup**: Auto-generate `<original>.bak` on save
+- **Recent files**: Quick access to 5 most recent lua files in tray menu
+
+### Tuning Workflow
+
+1. File → Open `1.2.2-2024.5.20.-GHUB.-github.lua`
+2. Select a gun on the left (ammo groups collapsible)
+3. Adjust coefficients in the middle; chart updates in real time
+4. Toggle 1x/2x/3x and overlay scopes to see recoil at each magnification
+5. Preset → Save (e.g. `M762_1400dpi_1080p`)
+6. File → Save → writes back to lua, GHUB auto-reloads
 
 ## Development
 
@@ -251,6 +294,18 @@ def get_default_config() -> list[dict[str, str]]:
 You also need to sync modify the `G_bind` configuration in `1.2.2-2024.5.20.-GHUB.-github.lua`.
 
 ## Changelog
+
+### v1.1.1 (2026-06-18)
+- **New**: Ballistic coefficient visual editor, launched via tray menu "Open Editor" or standalone `main_editor.py`
+- **New**: 8 gun coefficients (base / crouch / hold-breath / bare / full-load / prone / 2x scope / 3x scope) editable visually
+- **New**: Mode switch (0 disabled / 1 enabled / 2 auto-click) dropdown
+- **New**: Attachment dropdowns (5 muzzle × 6 grip × 3 stock) with auto-computed full-load coefficient
+- **New**: Matplotlib trajectory preview with real-time visual feedback
+- **New**: 1x/2x/3x scope switch and multi-scope overlay comparison
+- **New**: Preset management (save/load/delete) by DPI / resolution / mouse model
+- **New**: Lua file auto-backup (generates `<original>.bak` on save)
+- **New**: Recent files list (5 entries) with tray menu quick access
+- **Dependency**: PySide6 + matplotlib
 
 ### v1.10 (2026-06-18)
 - **New**: Attachment cycling for muzzle / grip / stock; triggered by LAlt / LCtrl / LShift + mouse middle button
