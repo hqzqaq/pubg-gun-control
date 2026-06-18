@@ -20,9 +20,15 @@ logger = logging.getLogger(__name__)
 class TrayIcon:
     """系统托盘图标管理器"""
 
-    def __init__(self, on_exit: Callable[[], None], on_settings: Callable[[], None] | None = None) -> None:
+    def __init__(
+        self,
+        on_exit: Callable[[], None],
+        on_settings: Callable[[], None] | None = None,
+        on_open_editor: Callable[[], None] | None = None,
+    ) -> None:
         self.on_exit = on_exit
         self.on_settings = on_settings
+        self.on_open_editor = on_open_editor
         self.icon: pystray.Icon | None = None
         self._running = False
 
@@ -49,12 +55,20 @@ class TrayIcon:
         if self.on_settings:
             self.on_settings()
 
+    def _on_editor_clicked(self, icon: pystray.Icon) -> None:
+        if self.on_open_editor:
+            self.on_open_editor()
+
     def start(self) -> None:
-        menu_items = [
+        menu_items: list = [
             pystray.MenuItem("设置", self._on_settings_clicked),
+        ]
+        if self.on_open_editor is not None:
+            menu_items.append(pystray.MenuItem("打开编辑器", self._on_editor_clicked))
+        menu_items.extend([
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("退出", self._on_exit_clicked),
-        ]
+        ])
         menu = pystray.Menu(*menu_items)
 
         self.icon = pystray.Icon(

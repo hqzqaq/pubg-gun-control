@@ -125,3 +125,73 @@ def save_config(
         data["gun_attachments"] = load_gun_attachments()
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# 编辑器相关
+# ---------------------------------------------------------------------------
+
+
+_MAX_RECENT = 5
+
+
+def _load_full_config() -> dict[str, Any]:
+    """加载整个 config.json，避免覆盖其他字段"""
+    config_path = _get_config_path()
+    if not config_path.exists():
+        return {}
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            data: dict[str, Any] = json.load(f)
+        return data
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def load_editor_recent() -> list[str]:
+    """读取编辑器最近打开的 lua 文件列表（最多 5 个）"""
+    data = _load_full_config()
+    editor = data.get("editor", {})
+    if not isinstance(editor, dict):
+        return []
+    files = editor.get("recent_files", [])
+    if not isinstance(files, list):
+        return []
+    return [str(f) for f in files[:_MAX_RECENT]]
+
+
+def add_editor_recent(path: str) -> list[str]:
+    """添加一个最近文件，去重并截断到 5 个，写回 config.json"""
+    data = _load_full_config()
+    editor = data.get("editor", {})
+    if not isinstance(editor, dict):
+        editor = {}
+    files = editor.get("recent_files", [])
+    if not isinstance(files, list):
+        files = []
+    files = [str(f) for f in files]
+
+    abs_path = str(Path(path).resolve())
+    if abs_path in files:
+        files.remove(abs_path)
+    files.insert(0, abs_path)
+    files = files[:_MAX_RECENT]
+
+    editor["recent_files"] = files
+    data["editor"] = editor
+    config_path = _get_config_path()
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return files
+
+
+def clear_editor_recent() -> None:
+    """清空最近文件"""
+    data = _load_full_config()
+    editor = data.get("editor", {})
+    if isinstance(editor, dict):
+        editor["recent_files"] = []
+    data["editor"] = editor
+    config_path = _get_config_path()
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)

@@ -52,11 +52,38 @@
     }
   ],
   "gun_attachments": {
-    "UMP5": {"muzzle": true, "grip": true, "stock": false},
-    "MP5k": {"muzzle": true, "grip": true, "stock": true},
-    "M416": {"muzzle": true, "grip": true, "stock": true},
-    "ACE32": {"muzzle": true, "grip": true, "stock": true},
-    "Beryl M762": {"muzzle": true, "grip": true, "stock": false},
-    "AUG": {"muzzle": true, "grip": true, "stock": false}
+    "UMP5": {
+      "muzzle": true,
+      "grip": true,
+      "stock": false
+    },
+    "MP5k": {
+      "muzzle": true,
+      "grip": true,
+      "stock": true
+    },
+    "M416": {
+      "muzzle": true,
+      "grip": true,
+      "stock": true
+    },
+    "ACE32": {
+      "muzzle": true,
+      "grip": true,
+      "stock": true
+    },
+    "Beryl M762": {
+      "muzzle": true,
+      "grip": true,
+      "stock": false
+    },
+    "AUG": {
+      "muzzle": true,
+      "grip": true,
+      "stock": false
+    }
+  },
+  "editor": {
+    "recent_files": []
   }
 }

@@ -7,14 +7,18 @@ PUBG Gun Control 主程序入口
 """
 
 import logging
+import subprocess
 import sys
 import threading
+from pathlib import Path
 
 from pubg_gun_control.config_manager import load_config, save_config, load_attachments, load_gun_attachments
 from pubg_gun_control.input_listener import InputListener
 from pubg_gun_control.overlay_window import OverlayWindow
 from pubg_gun_control.settings_window import SettingsWindow
 from pubg_gun_control.tray_icon import TrayIcon
+
+PROJECT_ROOT = Path(__file__).resolve().parent
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +86,17 @@ class GunControlApp:
     def _open_settings(self) -> None:
         SettingsWindow(self.overlay.root, self._shortcuts, self._gun_attachments, self._on_settings_saved)
 
+    def _on_open_editor(self) -> None:
+        """从托盘菜单启动弹道编辑器（独立进程）"""
+        try:
+            subprocess.Popen(
+                [sys.executable, str(PROJECT_ROOT / "main_editor.py")],
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            logger.info("已启动编辑器进程")
+        except OSError as exc:
+            logger.error("启动编辑器失败: %s", exc)
+
     def _on_settings_saved(self, shortcuts: list[dict[str, str]], gun_attachments: dict[str, dict[str, bool]]) -> None:
         self._shortcuts = shortcuts
         self._gun_attachments = gun_attachments
@@ -102,7 +117,9 @@ class GunControlApp:
         )
         self.input_listener.start()
 
-        self.tray_icon = TrayIcon(self._on_exit, self._on_settings)
+        self.tray_icon = TrayIcon(
+            self._on_exit, self._on_settings, self._on_open_editor
+        )
         self.tray_icon.start()
 
         self.overlay.run()
