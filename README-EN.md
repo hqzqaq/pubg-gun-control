@@ -6,13 +6,16 @@ A weapon switch display tool for PUBG, designed to work with Logitech G HUB reco
 
 ## Features
 
-- Floating window display in upper-left corner (white background, red text, always on top)
+- Floating window in upper-left corner shows weapon name, scope mode and attachments (white background, red text, always on top)
 - Mouse click-through overlay, no interference with game operations
 - Multiple weapon switch combinations
 - Caps Lock key controls recoil mode on/off
-- **Weapon Lock Feature**: Ctrl + Alt toggles lock/unlock weapon switching, overlay turns yellow when locked
-- **Visual Shortcut Configuration**: Open settings window via system tray menu to modify shortcut display text
+- **Weapon Lock Feature**: RCtrl + Mouse G4 toggles lock/unlock weapon switching, overlay turns yellow when locked
+- **Visual Shortcut Configuration**: Open settings window via system tray menu to modify shortcut display text and per-weapon attachment support
 - **Config File Support**: Shortcuts saved in config.json with persistent storage
+- **Attachment Cycling**: Modifier key + mouse middle button cycles through muzzle/grip/stock attachments
+- **Scope Mode Switching**: RAlt + mouse side buttons switch between 2x/3x scope; current scope is shown at the top-left of the overlay
+- **One-Key Reset**: LCtrl + LAlt + Win resets all state (weapon, scope, attachments, lock)
 - Works with Logitech G HUB recoil macros
 - `1.2.2-2024.5.20.-GHUB.-github.lua` is the recoil script, needs to be imported into G HUB, tutorials available on Bilibili etc.
 - `Mouse shortcuts are consistent with the recoil script. If you need to change shortcuts, weapon configurations, or recoil trajectory parameters, you can modify them yourself, AI can help with modifications`
@@ -58,16 +61,42 @@ This is because the game runs at a higher privilege level, and input monitoring 
 | LShift + Mouse Forward Button | Beryl M762 |
 | LShift + Mouse Back Button    | AUG    |
 
+### Attachment Cycling (When Caps Lock is ON)
+
+| Combination               | Function           |
+| ------------------------- | ------------------ |
+| LAlt + Mouse Middle (G3)  | Cycle muzzle       |
+| LCtrl + Mouse Middle (G3) | Cycle grip         |
+| LShift + Mouse Middle (G3)| Cycle stock        |
+
+Available attachment values:
+- Muzzle: None / Compensator / Flash Hider / Suppressor / Muzzle Brake
+- Grip: None / Vertical / Angled / Thumb / Half / Light
+- Stock: None / Tactical / Heavy
+
+### Scope Mode Switching (When Caps Lock is ON)
+
+| Combination                 | Function      |
+| --------------------------- | ------------- |
+| RAlt + Mouse G5 (Forward)   | Switch to 2x  |
+| RAlt + Mouse G4 (Back)      | Switch to 3x  |
+| RCtrl + Mouse G5 (Forward)  | Switch to 1x  |
+
+The current scope (1/2/3) is displayed at the top-left of the overlay.
+
 ### Recoil Mode Control
 
 | Action                                          | Function                                       |
 | ----------------------------------------------- | ---------------------------------------------- |
 | Press Caps Lock (currently showing "None")      | Enable recoil mode, show default weapon (UMP5) |
 | Press Caps Lock (currently showing weapon name) | Disable recoil mode, show "None"               |
+| Press 1 key                                     | Enable recoil mode (same as Caps Lock when "None" is shown) |
+| Press 2 key                                     | Disable recoil mode, show "None"               |
 | Press G / 3 / 4 / 5 keys                        | Cancel recoil mode, show "None"                |
 | Press Tab key                                   | Cancel recoil mode, show "None"                |
 | Caps Lock OFF                                   | Show "None"                                    |
-| Press Ctrl + Alt                                | Lock/Unlock weapon switching (overlay turns yellow when locked) |
+| Press RCtrl + Mouse G4 (Back)                   | Lock/Unlock weapon switching (overlay turns yellow when locked) |
+| Press LCtrl + LAlt + Win                       | One-key reset of all state (weapon, scope, attachments, lock) |
 
 ## Using with Logitech G HUB
 
@@ -187,11 +216,25 @@ Shortcut configurations are saved in the `config.json` file with the following f
     {"modifier": "ctrl", "mouse_button": "backward", "text": "ACE32"},
     {"modifier": "shift", "mouse_button": "forward", "text": "Beryl M762"},
     {"modifier": "shift", "mouse_button": "backward", "text": "AUG"}
-  ]
+  ],
+  "attachments": [
+    {"modifier": "alt", "mouse_button": "middle", "category": "muzzle", "label": "Muzzle"},
+    {"modifier": "ctrl", "mouse_button": "middle", "category": "grip", "label": "Grip"},
+    {"modifier": "shift", "mouse_button": "middle", "category": "stock", "label": "Stock"}
+  ],
+  "gun_attachments": {
+    "UMP5":       {"muzzle": true, "grip": true, "stock": false},
+    "MP5k":       {"muzzle": true, "grip": true, "stock": true},
+    "M416":       {"muzzle": true, "grip": true, "stock": true},
+    "ACE32":      {"muzzle": true, "grip": true, "stock": true},
+    "Beryl M762": {"muzzle": true, "grip": true, "stock": false},
+    "AUG":        {"muzzle": true, "grip": true, "stock": false}
+  }
 }
 ```
 
 You can open the visual configuration window via the "Settings" option in the system tray menu, and modifications will be saved automatically.
+The settings window lets you edit the weapon display text and use checkboxes to configure whether each weapon supports muzzle/grip/stock attachments.
 
 ### Default Weapon Configuration
 
@@ -200,14 +243,24 @@ To change the default recoil weapon, edit `src/pubg_gun_control/config_manager.p
 ```python
 def get_default_config() -> list[dict[str, str]]:
     return [
-        {"modifier": "alt", "mouse_button": "forward", "text": "MP5k"},
-        # ... Change the text of the first item to modify the default weapon
+        {"modifier": "alt", "mouse_button": "backward", "text": "UMP5"},
+        # Change the text of the first item to modify the default weapon
     ]
 ```
 
 You also need to sync modify the `G_bind` configuration in `1.2.2-2024.5.20.-GHUB.-github.lua`.
 
 ## Changelog
+
+### v1.10 (2026-06-18)
+- **New**: Attachment cycling for muzzle / grip / stock; triggered by LAlt / LCtrl / LShift + mouse middle button
+- **New**: Scope mode switching; RAlt + mouse G5/G4 toggles 2x/3x scope and RCtrl + mouse G5 switches back to 1x; current scope is shown at the top-left of the overlay
+- **New**: One-key reset; LCtrl + LAlt + Win resets weapon, scope, attachments and lock state
+- **New**: Number keys 1/2 now control recoil mode (1 enables, 2 disables)
+- **New**: Settings window supports checkboxes for per-weapon attachment support; unsupported attachments are auto-reset to "None" when switching weapons
+- **Improve**: Overlay now displays scope + weapon name + attachments
+- **Improve**: Lock shortcut changed from Ctrl+Alt to RCtrl+Mouse G4 to avoid conflicts with recoil combos
+- **Refactor**: Attachment / scope / reset logic centralized in `InputListener`; configuration data moved to `config.json`
 
 ### v1.0.9 (2026-06-02)
 - **Optimize**: Optimized code structure and performance
