@@ -10,6 +10,8 @@ dependencies = [
     "pillow>=12.1.1",
     "pynput>=1.8.1",
     "pystray>=0.19.5",
+    "PySide6>=6.6.0",
+    "matplotlib>=3.8.0",
 ]
 
 [tool.hatch.build.targets.wheel]
