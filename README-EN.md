@@ -16,7 +16,7 @@ A weapon switch display tool for PUBG, designed to work with Logitech G HUB reco
 - **Attachment Cycling**: Modifier key + mouse middle button cycles through muzzle/grip/stock attachments
 - **Scope Mode Switching**: RAlt + mouse side buttons switch between 2x/3x scope; current scope is shown at the top-left of the overlay
 - **One-Key Reset**: LCtrl + LAlt + Win resets all state (weapon, scope, attachments, lock)
-- **Voice Prompts for Key Actions**: Plays audio cues for recoil mode on/off, lock/unlock, and lock interception; can be toggled in the settings window
+- **Voice Prompts for Key Actions**: Plays audio cues for recoil mode on/off, lock/unlock, and lock interception; supports volume control and per-event toggle
 - **Ballistic Coefficient Visual Editor**: Tray menu → "Open Editor" or run `main_editor.py` standalone; visually adjust 8 gun coefficients, mode (disabled/enabled/auto-click) and attachment combos with real-time trajectory preview
 - **Scope Switch Preview**: Editor supports 1x/2x/3x scope switching and multi-scope overlay comparison
 - **Preset Management**: Save/load/delete config presets (switch profiles by DPI/resolution/mouse model)
@@ -295,6 +295,12 @@ def get_default_config() -> list[dict[str, str]]:
 You also need to sync modify the `G_bind` configuration in `1.2.2-2024.5.20.-GHUB.-github.lua`.
 
 ## Changelog
+
+### v1.1.3 (2026-06-18)
+- **Fix**: No voice prompts after packaging as exe; `pubg_gun_control.spec` now includes `voice/` in `Analysis.datas` so resources are extracted to `_MEIPASS/voice/` at runtime
+- **New**: 0~100 volume slider in the settings window; uses `wave` + `audioop` to dynamically adjust volume (falls back to native playback when `audioop` is unavailable)
+- **New**: Per-event toggles for all 5 voice prompts (recoil on/off, lock on/off, lock intercept) with a "Preview" button per event
+- **New**: `config.json` adds `voice_volume` and `voice_event_enabled` fields to persist these settings
 
 ### v1.1.2 (2026-06-18)
 - **New**: Voice prompts for key actions; plays cues for recoil mode on/off, lock/unlock, and lock interception

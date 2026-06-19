@@ -64,6 +64,39 @@ def test_voice_player_disabled(mock_play_sound: MagicMock) -> None:
     assert not mock_play_sound.called, "禁用状态下不应播放语音"
 
 
+@patch("winsound.PlaySound")
+def test_voice_player_volume_zero(mock_play_sound: MagicMock) -> None:
+    """音量为 0 时不应调用 winsound.PlaySound"""
+    player = VoicePlayer()
+    player.volume = 0
+    player.play("recoil_on")
+
+    assert not mock_play_sound.called, "音量为 0 时不应播放语音"
+
+
+@patch("winsound.PlaySound")
+def test_voice_player_event_disabled(mock_play_sound: MagicMock) -> None:
+    """单事件关闭时不应调用 winsound.PlaySound"""
+    player = VoicePlayer()
+    player.event_enabled = {"recoil_on": False, "recoil_off": True, "lock_on": True, "lock_off": True, "locked_action": True}
+    player.play("recoil_on")
+
+    assert not mock_play_sound.called, "事件被禁用时不应播放语音"
+
+
+@patch("winsound.PlaySound")
+def test_voice_player_volume_full(mock_play_sound: MagicMock) -> None:
+    """音量为 100 时应直接调用 winsound.PlaySound"""
+    player = VoicePlayer()
+    player.volume = 100
+    player.play("recoil_on")
+
+    assert mock_play_sound.called, "音量为 100 时应播放语音"
+    call_args = mock_play_sound.call_args
+    wav_path = call_args[0][0]
+    assert wav_path.endswith("压枪开启.wav"), f"wav 路径异常: {wav_path}"
+
+
 @patch("pubg_gun_control.input_listener.ctypes.windll.user32.GetKeyState", return_value=1)
 def test_input_listener_lock_intercept(_mock_get_key_state: MagicMock) -> None:
     """锁定模式下切换枪械/配件应被拦截并触发 locked_action 事件"""

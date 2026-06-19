@@ -49,6 +49,16 @@ _DEFAULT_GUN_ATTACHMENTS: dict[str, dict[str, bool]] = {
     "AUG":        {"muzzle": True, "grip": True, "stock": False},
 }
 
+_DEFAULT_VOICE_EVENT_ENABLED: dict[str, bool] = {
+    "recoil_on": True,
+    "recoil_off": True,
+    "lock_on": True,
+    "lock_off": True,
+    "locked_action": True,
+}
+
+_VOICE_EVENT_KEYS: tuple[str, ...] = tuple(_DEFAULT_VOICE_EVENT_ENABLED.keys())
+
 
 def get_default_attachments() -> list[dict[str, str]]:
     return list(_DEFAULT_ATTACHMENTS)
@@ -125,11 +135,61 @@ def load_voice_enabled() -> bool:
         return True
 
 
+def load_voice_volume() -> int:
+    """读取语音音量（0~100），默认 100。"""
+    config_path = _get_config_path()
+    if not config_path.exists():
+        return 100
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            data: dict[str, Any] = json.load(f)
+        volume = data.get("voice_volume")
+        if isinstance(volume, int) and 0 <= volume <= 100:
+            return volume
+        if isinstance(volume, bool):
+            # bool 是 int 的子类，单独排除
+            return 100
+        if isinstance(volume, (int, float)) and not isinstance(volume, bool):
+            clamped = int(volume)
+            if clamped < 0:
+                return 0
+            if clamped > 100:
+                return 100
+            return clamped
+        return 100
+    except (json.JSONDecodeError, OSError):
+        return 100
+
+
+def load_voice_event_enabled() -> dict[str, bool]:
+    """读取每个语音事件是否启用，默认全部启用。"""
+    config_path = _get_config_path()
+    result: dict[str, bool] = dict(_DEFAULT_VOICE_EVENT_ENABLED)
+    if not config_path.exists():
+        return result
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            data: dict[str, Any] = json.load(f)
+        event_enabled = data.get("voice_event_enabled")
+        if not isinstance(event_enabled, dict):
+            return result
+        for key in _VOICE_EVENT_KEYS:
+            if key in event_enabled and isinstance(event_enabled[key], bool):
+                result[key] = event_enabled[key]
+        return result
+    except (json.JSONDecodeError, OSError):
+        return result
+
+
 def save_config(
     shortcuts: list[dict[str, str]],
     attachments: list[dict[str, str]] | None = None,
     gun_attachments: dict[str, dict[str, bool]] | None = None,
     voice_enabled: bool | None = None,
+    voice_volume: int | None = None,
+    voice_event_enabled: dict[str, bool] | None = None,
 ) -> None:
     config_path = _get_config_path()
     data: dict[str, Any] = {"shortcuts": shortcuts}
@@ -145,6 +205,25 @@ def save_config(
         data["voice_enabled"] = voice_enabled
     else:
         data["voice_enabled"] = load_voice_enabled()
+    if voice_volume is not None:
+        clamped = int(voice_volume)
+        if clamped < 0:
+            clamped = 0
+        elif clamped > 100:
+            clamped = 100
+        data["voice_volume"] = clamped
+    else:
+        data["voice_volume"] = load_voice_volume()
+    if voice_event_enabled is not None:
+        normalized: dict[str, bool] = {}
+        for key in _VOICE_EVENT_KEYS:
+            if key in voice_event_enabled:
+                normalized[key] = bool(voice_event_enabled[key])
+            else:
+                normalized[key] = True
+        data["voice_event_enabled"] = normalized
+    else:
+        data["voice_event_enabled"] = load_voice_event_enabled()
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 

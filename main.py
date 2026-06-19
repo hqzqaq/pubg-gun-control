@@ -12,7 +12,15 @@ import sys
 import threading
 from pathlib import Path
 
-from pubg_gun_control.config_manager import load_config, save_config, load_attachments, load_gun_attachments, load_voice_enabled
+from pubg_gun_control.config_manager import (
+    load_config,
+    save_config,
+    load_attachments,
+    load_gun_attachments,
+    load_voice_enabled,
+    load_voice_volume,
+    load_voice_event_enabled,
+)
 from pubg_gun_control.input_listener import InputListener
 from pubg_gun_control.overlay_window import OverlayWindow
 from pubg_gun_control.voice_prompt import VoicePlayer
@@ -38,7 +46,11 @@ class GunControlApp:
         self._attachments: list[dict[str, str]] = load_attachments()
         self._gun_attachments: dict[str, dict[str, bool]] = load_gun_attachments()
         self._voice_enabled: bool = load_voice_enabled()
+        self._voice_volume: int = load_voice_volume()
+        self._voice_event_enabled: dict[str, bool] = load_voice_event_enabled()
         self.voice_player.enabled = self._voice_enabled
+        self.voice_player.volume = self._voice_volume
+        self.voice_player.event_enabled = self._voice_event_enabled
 
     def _on_gun_selected(self, gun_name: str) -> None:
         with self._lock:
@@ -88,7 +100,16 @@ class GunControlApp:
             self.overlay.root.after(0, self._open_settings)
 
     def _open_settings(self) -> None:
-        SettingsWindow(self.overlay.root, self._shortcuts, self._gun_attachments, self._on_settings_saved, voice_enabled=self._voice_enabled)
+        SettingsWindow(
+            self.overlay.root,
+            self._shortcuts,
+            self._gun_attachments,
+            self._on_settings_saved,
+            voice_enabled=self._voice_enabled,
+            voice_volume=self._voice_volume,
+            voice_event_enabled=self._voice_event_enabled,
+            voice_player=self.voice_player,
+        )
 
     def _on_open_editor(self) -> None:
         """从托盘菜单启动弹道编辑器（独立进程）"""
@@ -101,12 +122,29 @@ class GunControlApp:
         except OSError as exc:
             logger.error("启动编辑器失败: %s", exc)
 
-    def _on_settings_saved(self, shortcuts: list[dict[str, str]], gun_attachments: dict[str, dict[str, bool]], voice_enabled: bool) -> None:
+    def _on_settings_saved(
+        self,
+        shortcuts: list[dict[str, str]],
+        gun_attachments: dict[str, dict[str, bool]],
+        voice_enabled: bool,
+        voice_volume: int,
+        voice_event_enabled: dict[str, bool],
+    ) -> None:
         self._shortcuts = shortcuts
         self._gun_attachments = gun_attachments
         self._voice_enabled = voice_enabled
+        self._voice_volume = voice_volume
+        self._voice_event_enabled = voice_event_enabled
         self.voice_player.enabled = voice_enabled
-        save_config(shortcuts, gun_attachments=gun_attachments, voice_enabled=voice_enabled)
+        self.voice_player.volume = voice_volume
+        self.voice_player.event_enabled = voice_event_enabled
+        save_config(
+            shortcuts,
+            gun_attachments=gun_attachments,
+            voice_enabled=voice_enabled,
+            voice_volume=voice_volume,
+            voice_event_enabled=voice_event_enabled,
+        )
         if self.input_listener:
             self.input_listener.update_shortcuts(shortcuts)
             self.input_listener.update_gun_attachments(gun_attachments)

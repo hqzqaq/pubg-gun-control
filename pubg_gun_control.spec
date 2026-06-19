@@ -11,7 +11,10 @@ a = Analysis(
     binaries=[],
     # 注意：如果你的代码里是 import src.pubg_gun_control，
     # 确保打包后的路径能被 Python 识别
-    datas=[('src/pubg_gun_control', 'pubg_gun_control')],
+    datas=[
+        ('src/pubg_gun_control', 'pubg_gun_control'),
+        ('voice', 'voice'),
+    ],
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
