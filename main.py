@@ -64,7 +64,6 @@ class GunControlApp:
         rec_path = self._recognition_config.get("rec_path") or None
         self._rec_lua_writer = RecLuaWriter(rec_path)
         self._hotkey_listener = None
-        self._current_mode: str = "auto"
         self._editor_process: subprocess.Popen | None = None
 
     def _on_gun_selected(self, gun_name: str) -> None:
@@ -107,18 +106,12 @@ class GunControlApp:
                     self.overlay.update_attachment(f"{cat}:无")
         logger.info("已重置所有状态")
 
-    def _on_mode_switch(self, mode: str) -> None:
-        self._current_mode = mode
-        with self._lock:
-            if self.overlay.is_created():
-                self.overlay.set_mode(mode)
-        logger.info("已切换到%s模式", "自动识别" if mode == "auto" else "手动")
-
     _ATTACHMENT_DISPLAY: dict[str, dict[int, str]] = {
         "muzzle": {1: "无", 2: "补偿器", 3: "消焰器", 4: "消音器", 5: "制退器"},
         "grip":   {1: "无", 2: "垂直握把", 3: "斜向握把", 4: "拇指握把", 5: "半截握把", 6: "轻型握把"},
         "stock":  {1: "无", 2: "战术枪托", 3: "重型枪托"},
     }
+    _SCOPE_DISPLAY: dict[int, str] = {1: "1倍", 2: "2倍", 3: "3倍", 4: "4倍", 6: "6倍"}
 
     def _trigger_recognition(self) -> None:
         if not self._recognizer:
@@ -126,6 +119,7 @@ class GunControlApp:
         try:
             result = self._recognizer.recognize_all()
             gun = result.get("gun") or ""
+            scores = result.get("scores", {})
             self._rec_lua_writer.write(
                 gun=gun,
                 muzzle=result.get("muzzle", 1),
@@ -145,13 +139,16 @@ class GunControlApp:
                     self.overlay.set_scope_mode(result.get("scope", 1))
                     status = f"REC:{gun}" if gun else "REC:---"
                     self.overlay.update_recognition_status(status)
-            if gun:
-                if self.input_listener and not self.input_listener.is_locked():
-                    self.input_listener._toggle_lock()
-                logger.info("识别: %s 枪口:%d 握把:%d 枪托:%d 倍镜:%d",
-                            gun, result["muzzle"], result["grip"], result["stock"], result["scope"])
-            else:
-                logger.debug("未识别到枪械")
+            muzzle_label = self._ATTACHMENT_DISPLAY["muzzle"].get(result.get("muzzle", 1), "?")
+            grip_label = self._ATTACHMENT_DISPLAY["grip"].get(result.get("grip", 1), "?")
+            stock_label = self._ATTACHMENT_DISPLAY["stock"].get(result.get("stock", 1), "?")
+            scope_label = self._SCOPE_DISPLAY.get(result.get("scope", 1), "?")
+            logger.info("[识别] 枪械=%s(%.2f) 枪口=%s(%.2f) 握把=%s(%.2f) 枪托=%s(%.2f) 倍镜=%s(%.2f)",
+                        gun or "---", scores.get("gun", 0),
+                        muzzle_label, scores.get("muzzle", 0),
+                        grip_label, scores.get("grip", 0),
+                        stock_label, scores.get("stock", 0),
+                        scope_label, scores.get("scope", 0))
         except Exception:
             logger.exception("识别异常")
 
@@ -273,8 +270,6 @@ class GunControlApp:
             self._on_gun_selected, self._on_lock_changed, self._on_scope_changed,
             self._on_attachment_changed, self._on_reset, self._shortcuts, self._attachments,
             self._gun_attachments, voice_callback=self.voice_player.play,
-            mode_callback=self._on_mode_switch,
-            is_auto_mode=lambda: self._current_mode == "auto",
         )
         self.input_listener.start()
 
@@ -316,8 +311,6 @@ class GunControlApp:
 
     def _on_hotkey(self, key) -> None:
         try:
-            if self._current_mode != "auto":
-                return
             hotkey_name = self._recognition_config.get("hotkey", "f2")
             key_name = getattr(key, "name", None) or getattr(key, "char", None) or str(key)
             if key_name.lower() != hotkey_name.lower():

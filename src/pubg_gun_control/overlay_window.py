@@ -62,7 +62,6 @@ _TYPE_LOCK: Final[str] = "lock"
 _TYPE_SCOPE: Final[str] = "scope"
 _TYPE_ATTACHMENT: Final[str] = "attachment"
 _TYPE_REC: Final[str] = "rec"
-_TYPE_MODE: Final[str] = "mode"
 
 _user32 = ctypes.windll.user32
 _kernel32 = ctypes.windll.kernel32
@@ -100,7 +99,6 @@ class OverlayWindow:
         self.scope_mode: int = 1
         self.attachment_texts: dict[str, str] = {"muzzle": "", "grip": "", "stock": ""}
         self.rec_status: str = ""
-        self.current_mode: str = "manual"
         self._pending: queue.Queue[tuple[str, str | bool | int]] = queue.Queue()
         self._topmost_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
@@ -338,17 +336,6 @@ class OverlayWindow:
         )
         self.rec_label.place(x=2, y=42)
 
-        self.mode_label: tk.Label | None = tk.Label(
-            self.root,
-            text="M",
-            font=tkfont.Font(family=_FONT_FAMILY, size=7, weight="normal"),
-            fg="blue",
-            bg=_COLOR_BG_DEFAULT,
-            padx=0,
-            pady=0,
-        )
-        self.mode_label.place(x=170, y=2)
-
         self.root.update_idletasks()
 
         self._cached_hwnd = self._resolve_hwnd()
@@ -394,8 +381,6 @@ class OverlayWindow:
                     self._do_update_attachment(str(payload))
                 elif msg_type == _TYPE_REC:
                     self._do_update_recognition(str(payload))
-                elif msg_type == _TYPE_MODE:
-                    self._do_set_mode(str(payload))
         except queue.Empty:
             pass
 
@@ -427,8 +412,6 @@ class OverlayWindow:
                 lbl.config(bg=_COLOR_BG_LOCKED, fg=_COLOR_FG_LOCKED)
             if self.rec_label:
                 self.rec_label.config(bg=_COLOR_BG_LOCKED, fg=_COLOR_FG_LOCKED)
-            if self.mode_label:
-                self.mode_label.config(bg=_COLOR_BG_LOCKED, fg=_COLOR_FG_LOCKED)
         else:
             self.root.configure(bg=_COLOR_BG_DEFAULT)
             self.label.config(bg=_COLOR_BG_DEFAULT, fg=_COLOR_FG_DEFAULT)
@@ -438,12 +421,6 @@ class OverlayWindow:
                 lbl.config(bg=_COLOR_BG_DEFAULT, fg=_COLOR_FG_DEFAULT)
             if self.rec_label:
                 self.rec_label.config(bg=_COLOR_BG_DEFAULT, fg=_COLOR_FG_DEFAULT)
-            if self.mode_label:
-                self.mode_label.config(bg=_COLOR_BG_DEFAULT)
-                if self.current_mode == "auto":
-                    self.mode_label.config(fg="green")
-                else:
-                    self.mode_label.config(fg="blue")
 
         self.label.config(text=self.current_text)
 
@@ -509,12 +486,6 @@ class OverlayWindow:
             return
         self._pending.put((_TYPE_REC, text))
 
-    def set_mode(self, mode: str) -> None:
-        """设置当前模式显示（线程安全）: 'manual' 或 'auto'"""
-        if self.root is None:
-            return
-        self._pending.put((_TYPE_MODE, mode))
-
     def show(self) -> None:
         if self.root:
             self.root.deiconify()
@@ -540,7 +511,6 @@ class OverlayWindow:
             self.root = None
             self.label = None
             self.rec_label = None
-            self.mode_label = None
             self._cached_hwnd = 0
         logger.info("浮窗已关闭")
 

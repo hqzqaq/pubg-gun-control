@@ -219,11 +219,14 @@ class GunRecognizer:
         if screenshot is None:
             screenshot = self._capture_full_screen()
 
-        result: dict = {"gun": None, "muzzle": 1, "grip": 1, "stock": 1, "scope": 1}
+        result: dict = {"gun": None, "muzzle": 1, "grip": 1, "stock": 1, "scope": 1, "scores": {}}
 
         if "weapon_roi" in self._rois:
             roi_img = self.capture_roi(self._rois["weapon_roi"], screenshot)
-            result["gun"] = self.recognize_weapon(roi_img)
+            gray = cv2.cvtColor(roi_img, cv2.COLOR_BGR2GRAY) if len(roi_img.shape) == 3 else roi_img
+            name, score = self._match_template(gray, self._gun_templates, threshold=0.5)
+            result["gun"] = name
+            result["scores"]["gun"] = round(score, 3)
 
         weapon_type = self.get_weapon_type(result["gun"])
         result["weapon_type"] = weapon_type
@@ -232,11 +235,34 @@ class GunRecognizer:
             roi_key = f"{category}_roi"
             if roi_key in self._rois:
                 roi_img = self.capture_roi(self._rois[roi_key], screenshot)
-                result[category] = self.recognize_attachment(roi_img, category, weapon_type)
+                gray = cv2.cvtColor(roi_img, cv2.COLOR_BGR2GRAY) if len(roi_img.shape) == 3 else roi_img
+                if category == "muzzle":
+                    type_templates = self._attachment_templates.get(category, {}).get(weapon_type, {})
+                else:
+                    type_templates = self._attachment_templates.get(category, {}).get("_shared", {})
+                thresholds = {"muzzle": 0.25, "grip": 0.3, "stock": 0.35}
+                name, score = self._match_template(gray, type_templates, threshold=thresholds.get(category, 0.35))
+                result["scores"][category] = round(score, 3)
+                if name:
+                    options = {"muzzle": MUZZLE_OPTIONS, "grip": GRIP_OPTIONS, "stock": STOCK_OPTIONS}[category]
+                    if name in options:
+                        result[category] = options.index(name) + 1
 
         if "scope_roi" in self._rois:
             roi_img = self.capture_roi(self._rois["scope_roi"], screenshot)
-            result["scope"] = self.recognize_scope(roi_img)
+            gray = cv2.cvtColor(roi_img, cv2.COLOR_BGR2GRAY) if len(roi_img.shape) == 3 else roi_img
+            best_name, best_score = None, 0.0
+            for sname, (stmpl, sval) in self._scope_templates.items():
+                if gray.shape[0] < stmpl.shape[0] or gray.shape[1] < stmpl.shape[1]:
+                    continue
+                res = cv2.matchTemplate(gray, stmpl, cv2.TM_CCOEFF_NORMED)
+                _, mv, _, _ = cv2.minMaxLoc(res)
+                if mv > best_score:
+                    best_score = mv
+                    best_name = sname
+            result["scores"]["scope"] = round(best_score, 3)
+            if best_name and best_score >= 0.35 and best_name in self._scope_templates:
+                result["scope"] = self._scope_templates[best_name][1]
 
         return result
 

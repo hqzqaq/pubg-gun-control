@@ -26,26 +26,13 @@ rec_muzzle = 1
 rec_grip = 1
 rec_stock = 1
 rec_scope = 1
-rec_mode = 1  -- 0=手动模式, 1=自动识别模式（默认自动）
-local _capsWasOn = false  -- 上次 CapsLock 状态
+local _capsWasOn = false
 -- ====== 自动识别变量结束 ======
 """
 
 AUTO_RECOGNIZE_FUNCS = """
 -- ====== 自动识别函数（由 Python 程序注入） ======
-function pubg.loadRecResult()
-    local success, err = pcall(function()
-        dofile(REC_PATH)
-    end)
-    if not success then
-        OutputLogMessage("[AUTO] 读取识别结果失败: %s\\n", tostring(err))
-        return false
-    end
-    return true
-end
-
 function pubg.applyRecResult()
-    if rec_mode ~= 1 then return end
     if pubg.stateLocked then return end
     if rec_gun ~= "" and rec_gun ~= pubg.getCurrentGunName() then
         OutputLogMessage("[AUTO] 切换枪械: %s -> %s\\n", pubg.getCurrentGunName(), rec_gun)
@@ -77,47 +64,34 @@ function pubg.applyRecResult()
     end
 end
 
-function pubg.setRecMode(mode)
-    rec_mode = mode
-    if mode == 1 then
-        OutputLogMessage("[MODE] 已切换到自动识别模式\\n")
-    else
-        OutputLogMessage("[MODE] 已切换到手动模式\\n")
+function pubg.loadRecResult()
+    local success, err = pcall(function()
+        dofile(REC_PATH)
+    end)
+    if not success then
+        OutputLogMessage("[AUTO] 读取识别结果失败: %s\\n", tostring(err))
+        return false
     end
-    pubg.outputLogRender()
+    return true
 end
 -- ====== 自动识别函数结束 ======
 """
 
 AUTO_RECOGNIZE_EVENT_BLOCK = """
     -- 【自动识别】CapsLock 状态变化检测：开启时读取 rec.lua
-    if AUTO_RECOGNIZE and rec_mode == 1 then
+    if AUTO_RECOGNIZE then
         local capsOn = IsKeyLockOn("capslock")
         if capsOn and not _capsWasOn then
             if pubg.loadRecResult() then
                 pubg.applyRecResult()
             end
             OutputLogMessage("[AUTO] ====== 压枪状态 ======\\n")
-            OutputLogMessage("[AUTO] 模式: %s\\n", rec_mode == 1 and "自动" or "手动")
             OutputLogMessage("[AUTO] 枪械: %s\\n", tostring(rec_gun))
             OutputLogMessage("[AUTO] 枪口: %d | 握把: %d | 枪托: %d | 倍镜: %d\\n", rec_muzzle, rec_grip, rec_stock, rec_scope)
             OutputLogMessage("[AUTO] 当前压枪: %s\\n", pubg.getCurrentGunName())
             OutputLogMessage("[AUTO] ========================\\n")
         end
         _capsWasOn = capsOn
-    end
-
-    -- 【自动识别】模式切换: RShift+G5=手动, RShift+G4=自动
-    if AUTO_RECOGNIZE and event == "MOUSE_BUTTON_PRESSED" and family == "mouse" then
-        if IsModifierPressed("rshift") then
-            if arg == 5 then
-                pubg.setRecMode(0)
-                return
-            elseif arg == 4 then
-                pubg.setRecMode(1)
-                return
-            end
-        end
     end
 """
 
