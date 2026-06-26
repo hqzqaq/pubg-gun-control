@@ -307,7 +307,11 @@ class LuaBallisticParser:
         block_start_re: re.Pattern[str],
         new_block: str,
     ) -> str:
-        """在 content 中找到 block_start_re 匹配的行到对应结束 `}`，替换为 new_block"""
+        """在 content 中找到 block_start_re 匹配的行到对应结束 `}`，替换为 new_block
+
+        如果目标块（如 canUse）嵌套在父块（如 userInfo）内部，
+        则替换范围延伸到父块的结束 `}`，以保留父块的其余内容（如 G_bind）。
+        """
         lines = content.splitlines(keepends=True)
 
         start_idx: int | None = None
@@ -320,38 +324,72 @@ class LuaBallisticParser:
             logger.warning("未找到块: %s，跳过", block_start_re.pattern)
             return content
 
-        # 从 start_idx 之后开始扫描 brace 深度，找到匹配的 `}`
+        # 从 start_idx 向上查找是否在父块内（如 userInfo = {）
+        parent_start: int | None = None
+        for i in range(start_idx - 1, -1, -1):
+            stripped = lines[i].strip()
+            # 跳过空行和注释
+            if not stripped or stripped.startswith("--"):
+                continue
+            # 检查是否是块定义（xxx = {），且不是目标块自身
+            if (stripped.endswith("= {") or stripped.endswith("={")) and i != start_idx:
+                parent_start = i
+                break
+            break
+
+        # 从 start_idx 之后开始扫描 brace 深度，找到目标块的结束 `}`
         depth = 1
-        end_idx: int | None = None
+        target_end: int | None = None
         for j in range(start_idx + 1, len(lines)):
             depth += lines[j].count("{") - lines[j].count("}")
             if depth <= 0:
-                end_idx = j
+                target_end = j
                 break
 
-        if end_idx is None:
+        if target_end is None:
             logger.warning("未找到块结束: %s", block_start_re.pattern)
             return content
 
-        # 保留 start_idx 之前的行 + new_block + end_idx 之后
+        # 如果在父块内，继续扫描到父块结束
+        if parent_start is not None:
+            parent_depth = 0
+            for j in range(parent_start, len(lines)):
+                parent_depth += lines[j].count("{") - lines[j].count("}")
+                if parent_depth <= 0:
+                    # 父块结束于 j，替换范围是 start_idx 到 j（保留父块开始到 start_idx 之间的内容）
+                    before = lines[:start_idx]
+                    after = lines[j + 1:]
+                    # 保留 parent_start 到 start_idx 之间的内容（父块头部）
+                    parent_header = lines[parent_start:start_idx]
+                    # 保留 target_end+1 到 j 之间的内容（父块尾部，如 G_bind）
+                    parent_tail = lines[target_end + 1:j + 1]
+                    new_lines = lines[:parent_start] + parent_header + [new_block] + parent_tail + after
+                    return "".join(new_lines)
+
+        # 不在父块内，直接替换
         before = lines[:start_idx]
-        after = lines[end_idx + 1 :]
+        after = lines[target_end + 1:]
         new_lines = before + [new_block] + after
         return "".join(new_lines)
 
     def _render_canuse(self, config: BallisticConfig) -> str:
-        """渲染 canUse 表，保持与原文件相似的制表符缩进"""
-        lines: list[str] = ["canUse = {"]
+        """渲染 canUse 表，保持与原文件一致的制表符缩进
+
+        canUse 是 userInfo 表的字段（非顶级变量），因此：
+        - 起始行保留制表符缩进
+        - 结束花括号后必须带逗号，以分隔后续字段（如 G_bind）
+        """
+        lines: list[str] = ["\tcanUse = {"]
         for ammo, guns in config.ammo_groups.items():
-            lines.append(f'\t["{ammo}"] = {{')
+            lines.append(f'\t\t["{ammo}"] = {{')
             if not guns:
-                lines.append("\t},")
+                lines.append("\t\t},")
                 continue
             name_width = max(len(g.name) for g in guns) + 2  # 包含引号
             for g in guns:
-                lines.append("\t\t" + self._format_gun_row(g, name_width))
-            lines.append("\t},")
-        lines.append("}")
+                lines.append("\t\t\t" + self._format_gun_row(g, name_width))
+            lines.append("\t\t},")
+        lines.append("\t},")
         lines.append("")
         return "\n".join(lines)
 

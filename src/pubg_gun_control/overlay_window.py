@@ -61,6 +61,8 @@ _TYPE_TEXT: Final[str] = "text"
 _TYPE_LOCK: Final[str] = "lock"
 _TYPE_SCOPE: Final[str] = "scope"
 _TYPE_ATTACHMENT: Final[str] = "attachment"
+_TYPE_REC: Final[str] = "rec"
+_TYPE_MODE: Final[str] = "mode"
 
 _user32 = ctypes.windll.user32
 _kernel32 = ctypes.windll.kernel32
@@ -97,6 +99,8 @@ class OverlayWindow:
         self.locked: bool = False
         self.scope_mode: int = 1
         self.attachment_texts: dict[str, str] = {"muzzle": "", "grip": "", "stock": ""}
+        self.rec_status: str = ""
+        self.current_mode: str = "manual"
         self._pending: queue.Queue[tuple[str, str | bool | int]] = queue.Queue()
         self._topmost_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
@@ -300,7 +304,7 @@ class OverlayWindow:
         self.label = tk.Label(
             self.root,
             text="无",
-            font=tkfont.Font(family=_FONT_FAMILY, size=16, weight=_FONT_WEIGHT),
+            font=tkfont.Font(family=_FONT_FAMILY, size=12, weight=_FONT_WEIGHT),
             fg=_COLOR_FG_DEFAULT,
             bg=_COLOR_BG_DEFAULT,
             padx=0,
@@ -322,6 +326,28 @@ class OverlayWindow:
             )
             lbl.place(relx=0.82, rely=0.15 + i * 0.35, anchor=tk.CENTER)
             self.attachment_labels[cat] = lbl
+
+        self.rec_label: tk.Label | None = tk.Label(
+            self.root,
+            text="",
+            font=tkfont.Font(family=_FONT_FAMILY, size=7, weight="normal"),
+            fg=_COLOR_FG_DEFAULT,
+            bg=_COLOR_BG_DEFAULT,
+            padx=0,
+            pady=0,
+        )
+        self.rec_label.place(x=2, y=42)
+
+        self.mode_label: tk.Label | None = tk.Label(
+            self.root,
+            text="M",
+            font=tkfont.Font(family=_FONT_FAMILY, size=7, weight="normal"),
+            fg="blue",
+            bg=_COLOR_BG_DEFAULT,
+            padx=0,
+            pady=0,
+        )
+        self.mode_label.place(x=170, y=2)
 
         self.root.update_idletasks()
 
@@ -366,6 +392,10 @@ class OverlayWindow:
                     self._do_update_scope(int(payload))
                 elif msg_type == _TYPE_ATTACHMENT:
                     self._do_update_attachment(str(payload))
+                elif msg_type == _TYPE_REC:
+                    self._do_update_recognition(str(payload))
+                elif msg_type == _TYPE_MODE:
+                    self._do_set_mode(str(payload))
         except queue.Empty:
             pass
 
@@ -395,6 +425,10 @@ class OverlayWindow:
                 self.scope_label.config(bg=_COLOR_BG_LOCKED, fg=_COLOR_FG_LOCKED)
             for lbl in self.attachment_labels.values():
                 lbl.config(bg=_COLOR_BG_LOCKED, fg=_COLOR_FG_LOCKED)
+            if self.rec_label:
+                self.rec_label.config(bg=_COLOR_BG_LOCKED, fg=_COLOR_FG_LOCKED)
+            if self.mode_label:
+                self.mode_label.config(bg=_COLOR_BG_LOCKED, fg=_COLOR_FG_LOCKED)
         else:
             self.root.configure(bg=_COLOR_BG_DEFAULT)
             self.label.config(bg=_COLOR_BG_DEFAULT, fg=_COLOR_FG_DEFAULT)
@@ -402,6 +436,14 @@ class OverlayWindow:
                 self.scope_label.config(bg=_COLOR_BG_DEFAULT, fg=_COLOR_FG_DEFAULT)
             for lbl in self.attachment_labels.values():
                 lbl.config(bg=_COLOR_BG_DEFAULT, fg=_COLOR_FG_DEFAULT)
+            if self.rec_label:
+                self.rec_label.config(bg=_COLOR_BG_DEFAULT, fg=_COLOR_FG_DEFAULT)
+            if self.mode_label:
+                self.mode_label.config(bg=_COLOR_BG_DEFAULT)
+                if self.current_mode == "auto":
+                    self.mode_label.config(fg="green")
+                else:
+                    self.mode_label.config(fg="blue")
 
         self.label.config(text=self.current_text)
 
@@ -423,6 +465,24 @@ class OverlayWindow:
             if lbl:
                 lbl.config(text=name)
 
+    def _do_update_recognition(self, text: str) -> None:
+        if self.root is None or self.rec_label is None:
+            return
+        if text != self.rec_status:
+            self.rec_status = text
+            self.rec_label.config(text=text)
+
+    def _do_set_mode(self, mode: str) -> None:
+        if self.root is None or self.mode_label is None:
+            return
+        if mode == self.current_mode:
+            return
+        self.current_mode = mode
+        if mode == "auto":
+            self.mode_label.config(text="A", fg="green")
+        else:
+            self.mode_label.config(text="M", fg="blue")
+
     def update_text(self, text: str) -> None:
         if self.root is None or self.label is None:
             return
@@ -442,6 +502,18 @@ class OverlayWindow:
         if self.root is None:
             return
         self._pending.put((_TYPE_ATTACHMENT, text))
+
+    def update_recognition_status(self, text: str) -> None:
+        """更新识别状态显示（线程安全）"""
+        if self.root is None:
+            return
+        self._pending.put((_TYPE_REC, text))
+
+    def set_mode(self, mode: str) -> None:
+        """设置当前模式显示（线程安全）: 'manual' 或 'auto'"""
+        if self.root is None:
+            return
+        self._pending.put((_TYPE_MODE, mode))
 
     def show(self) -> None:
         if self.root:
@@ -467,6 +539,8 @@ class OverlayWindow:
             self.root.destroy()
             self.root = None
             self.label = None
+            self.rec_label = None
+            self.mode_label = None
             self._cached_hwnd = 0
         logger.info("浮窗已关闭")
 

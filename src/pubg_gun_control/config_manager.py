@@ -229,6 +229,54 @@ def save_config(
 
 
 # ---------------------------------------------------------------------------
+# 识别配置
+# ---------------------------------------------------------------------------
+
+
+_DEFAULT_RECOGNITION: dict[str, Any] = {
+    "enabled": False,
+    "weapon_roi": [],
+    "muzzle_roi": [],
+    "grip_roi": [],
+    "stock_roi": [],
+    "scope_roi": [],
+    "hotkey": "f2",
+    "rec_path": "",
+    "template_dir": "",
+}
+
+
+def load_recognition() -> dict[str, Any]:
+    """读取自动识别配置"""
+    config_path = _get_config_path()
+    if not config_path.exists():
+        return dict(_DEFAULT_RECOGNITION)
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            data: dict[str, Any] = json.load(f)
+        rec = data.get("recognition", {})
+        if not isinstance(rec, dict):
+            return dict(_DEFAULT_RECOGNITION)
+        result = dict(_DEFAULT_RECOGNITION)
+        for key in _DEFAULT_RECOGNITION:
+            if key in rec:
+                result[key] = rec[key]
+        return result
+    except (json.JSONDecodeError, OSError):
+        return dict(_DEFAULT_RECOGNITION)
+
+
+def save_recognition(recognition: dict[str, Any]) -> None:
+    """保存自动识别配置到 config.json"""
+    data = _load_full_config()
+    data["recognition"] = recognition
+    config_path = _get_config_path()
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+# ---------------------------------------------------------------------------
 # 编辑器相关
 # ---------------------------------------------------------------------------
 

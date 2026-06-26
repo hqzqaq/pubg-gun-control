@@ -79,6 +79,8 @@ class InputListener:
         attachment_shortcuts: list[dict[str, str]] | None = None,
         gun_attachments: dict[str, dict[str, bool]] | None = None,
         voice_callback: Callable[[str], None] | None = None,
+        mode_callback: Callable[[str], None] | None = None,
+        is_auto_mode: Callable[[], bool] | None = None,
     ) -> None:
         self.callback = callback
         self.lock_callback = lock_callback
@@ -86,6 +88,8 @@ class InputListener:
         self.attachment_callback = attachment_callback
         self.reset_callback = reset_callback
         self.voice_callback = voice_callback
+        self.mode_callback = mode_callback
+        self._is_auto_mode = is_auto_mode
         self.keyboard_listener: keyboard.Listener | None = None
         self.mouse_listener: mouse.Listener | None = None
 
@@ -94,6 +98,7 @@ class InputListener:
         self.shift_pressed = False
         self.alt_r_pressed = False
         self.ctrl_r_pressed = False
+        self.shift_r_pressed = False
         self.win_pressed = False
 
         self.current_text: str = "无"
@@ -111,6 +116,20 @@ class InputListener:
         self._gun_attachments: dict[str, dict[str, bool]] = gun_attachments or {}
 
         self.scope_mode: int = 1
+        self._last_auto_text: str = "无"
+
+    def set_auto_text(self, text: str) -> None:
+        """由外部（自动识别）设置当前枪械名，不影响 CapsLock 切换逻辑"""
+        self._last_auto_text = text
+
+    def _update_gun_display(self, gun_name: str) -> None:
+        if self._is_auto_mode and self._is_auto_mode():
+            if self.aim_mode_enabled:
+                self.callback(self._last_auto_text)
+            else:
+                self.callback("无")
+            return
+        self.callback(gun_name)
 
     def _build_attachment_map(self, shortcuts: list[dict[str, str]]) -> None:
         self._attachment_map = {
@@ -139,13 +158,12 @@ class InputListener:
             ctypes.windll.user32.keybd_event(0x14, 0, 2, 0)
 
     def _cancel_aim_mode(self) -> None:
-        if self.current_text != "无":
-            self.last_gun_name = self.current_text
+        if self.aim_mode_enabled:
             if self.voice_callback:
                 self.voice_callback("recoil_off")
         self.aim_mode_enabled = False
         self.current_text = "无"
-        self.callback(self.current_text)
+        self._update_gun_display("无")
 
     def _toggle_lock(self) -> None:
         self.locked = not self.locked
@@ -192,6 +210,8 @@ class InputListener:
                 self.ctrl_r_pressed = True
             elif key == Key.shift_l or key == Key.shift:
                 self.shift_pressed = True
+            elif key == Key.shift_r:
+                self.shift_r_pressed = True
             elif key == Key.cmd_l or key == Key.cmd_r:
                 self.win_pressed = True
                 if self.ctrl_pressed and self.alt_pressed:
@@ -199,14 +219,14 @@ class InputListener:
             elif key == Key.caps_lock:
                 if time.monotonic() < self._ignore_caps_lock_until:
                     return
-                if self.current_text == "无":
+                if self.aim_mode_enabled:
+                    self._cancel_aim_mode()
+                else:
                     self.aim_mode_enabled = True
-                    self.current_text = self.last_gun_name
+                    display = self._last_auto_text if (self._is_auto_mode and self._is_auto_mode()) else self.last_gun_name
+                    self._update_gun_display(display)
                     if self.voice_callback:
                         self.voice_callback("recoil_on")
-                else:
-                    self._cancel_aim_mode()
-                self.callback(self.current_text)
             elif key == Key.tab:
                 self._cancel_aim_mode()
                 self._turn_off_caps_lock()
@@ -215,7 +235,7 @@ class InputListener:
                     if self.current_text == "无":
                         self.aim_mode_enabled = True
                         self.current_text = self.last_gun_name
-                        self.callback(self.current_text)
+                        self._update_gun_display(self.current_text)
                         if self.voice_callback:
                             self.voice_callback("recoil_on")
                     self._turn_on_caps_lock()
@@ -240,6 +260,8 @@ class InputListener:
                 self.ctrl_r_pressed = False
             elif key == Key.shift_l or key == Key.shift:
                 self.shift_pressed = False
+            elif key == Key.shift_r:
+                self.shift_r_pressed = False
             elif key == Key.cmd_l or key == Key.cmd_r:
                 self.win_pressed = False
         except AttributeError:
@@ -254,13 +276,23 @@ class InputListener:
         if not self.is_caps_lock_on():
             self.aim_mode_enabled = False
             self.current_text = "无"
-            self.callback(self.current_text)
+            self._update_gun_display(self.current_text)
             return
 
         if self.ctrl_r_pressed and button == Button.x1:
             logger.info("RCtrl + G4 触发锁定/解锁")
             self._toggle_lock()
             return
+
+        if self.shift_r_pressed and self.mode_callback:
+            if button == Button.x2:
+                logger.info("RShift + G5 → 切换到手动模式")
+                self.mode_callback("manual")
+                return
+            elif button == Button.x1:
+                logger.info("RShift + G4 → 切换到自动识别模式")
+                self.mode_callback("auto")
+                return
 
         if self.locked:
             if (
@@ -297,11 +329,15 @@ class InputListener:
 
         attachment_cat = self._try_match_attachment(button)
         if attachment_cat:
+            if self._is_auto_mode and self._is_auto_mode():
+                return
             self._cycle_attachment(attachment_cat)
             return
 
         gun_name = self._get_gun_name(button)
         if gun_name:
+            if self._is_auto_mode and self._is_auto_mode():
+                return
             self.current_text = gun_name
             ga = self._gun_attachments.get(gun_name, {"muzzle": True, "grip": True, "stock": True})
             for cat in self._ATTACHMENT_OPTIONS:
@@ -309,7 +345,7 @@ class InputListener:
                     self._attachment_indices[cat] = 0
                     if self.attachment_callback:
                         self.attachment_callback(cat, "无")
-            self.callback(self.current_text)
+            self._update_gun_display(self.current_text)
 
     def _try_match_attachment(self, button: Button) -> str | None:
         if not self.attachment_callback:

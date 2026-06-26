@@ -57,12 +57,19 @@ class SettingsWindow:
         voice_volume: int = 100,
         voice_event_enabled: dict[str, bool] | None = None,
         voice_player: VoicePlayer | None = None,
+        recognition_config: dict | None = None,
+        on_recognition_save: Callable[[dict], None] | None = None,
     ) -> None:
         self.parent = parent
         self.shortcuts = list(shortcuts)
         self.gun_attachments = dict(gun_attachments)
         self.on_save = on_save
         self.voice_player = voice_player
+        self._recognition_config = recognition_config or {}
+        self.on_recognition_save = on_recognition_save
+        self.rec_enabled_var = tk.BooleanVar(value=bool(self._recognition_config.get("enabled", False)))
+        self.rec_hotkey_var = tk.StringVar(value=str(self._recognition_config.get("hotkey", "f2")))
+        self.rec_path_var = tk.StringVar(value=str(self._recognition_config.get("rec_path", "")))
         self.voice_enabled_var = tk.BooleanVar(value=voice_enabled)
         self.voice_volume_var = tk.IntVar(value=max(0, min(100, int(voice_volume))))
         self._default_event_enabled = self._build_default_event_enabled(voice_event_enabled)
@@ -180,6 +187,37 @@ class SettingsWindow:
             ).grid(row=idx, column=2, padx=4, pady=1, sticky="e")
 
         sep_row = events_row + 1
+
+        # 自动识别配置区
+        rec_row = sep_row
+        rec_frame = ttk.Frame(main_frame)
+        rec_frame.grid(row=rec_row, column=0, columnspan=self._COLUMNS, pady=(3, 3), padx=4, sticky="ew")
+        ttk.Label(rec_frame, text="自动识别", font=("Arial", 10, "bold")).grid(
+            row=0, column=0, columnspan=3, pady=(0, 3), sticky="w"
+        )
+        ttk.Checkbutton(rec_frame, text="启用自动识别", variable=self.rec_enabled_var).grid(
+            row=1, column=0, padx=(0, 8), sticky="w"
+        )
+        ttk.Label(rec_frame, text="识别快捷键", width=10, anchor="w").grid(
+            row=1, column=1, padx=(0, 4), sticky="w"
+        )
+        ttk.Entry(rec_frame, textvariable=self.rec_hotkey_var, width=8, justify="center").grid(
+            row=1, column=2, padx=2, sticky="w"
+        )
+        ttk.Label(rec_frame, text="rec.lua路径", width=10, anchor="w").grid(
+            row=2, column=0, padx=(0, 4), sticky="w", pady=(4, 0)
+        )
+        ttk.Entry(rec_frame, textvariable=self.rec_path_var, width=30).grid(
+            row=2, column=1, columnspan=2, padx=2, sticky="ew", pady=(4, 0)
+        )
+        ttk.Label(rec_frame, text="留空则使用默认路径（程序目录下pubg_rec.lua）", font=("Arial", 8), foreground="gray").grid(
+            row=3, column=0, columnspan=3, sticky="w", pady=(0, 2)
+        )
+        ttk.Button(rec_frame, text="导出GHUB脚本", command=self._on_export_lua, width=14).grid(
+            row=4, column=0, columnspan=3, pady=(4, 2), sticky="w"
+        )
+
+        sep_row = rec_row + 1
         ttk.Separator(main_frame, orient="horizontal").grid(
             row=sep_row, column=0, columnspan=self._COLUMNS, sticky="ew", pady=(3, 3)
         )
@@ -241,7 +279,38 @@ class SettingsWindow:
             event: bool(var.get()) for event, var in self.voice_event_vars.items()
         }
         self.on_save(new_shortcuts, new_gun_attachments, voice_enabled, voice_volume, voice_event_enabled)
+        if self.on_recognition_save is not None:
+            rec_cfg = {
+                "enabled": self.rec_enabled_var.get(),
+                "hotkey": self.rec_hotkey_var.get().strip() or "f2",
+                "rec_path": self.rec_path_var.get().strip(),
+            }
+            self.on_recognition_save(rec_cfg)
         self.window.destroy()
+
+    def _on_export_lua(self) -> None:
+        from tkinter import filedialog, messagebox
+        from pathlib import Path
+        from pubg_gun_control.lua_generator import generate_auto_recognize_script
+
+        source = str(Path(__file__).resolve().parent.parent.parent / "1.2.2-2024.5.20.-GHUB.-github.lua")
+        rec_path = self.rec_path_var.get().strip()
+        if not rec_path:
+            rec_path = str(Path(__file__).resolve().parent.parent.parent / "pubg_rec.lua")
+
+        save_path = filedialog.asksaveasfilename(
+            title="导出GHUB压枪脚本",
+            defaultextension=".lua",
+            filetypes=[("Lua脚本", "*.lua")],
+            initialfile="auto_recognize_ghub.lua",
+        )
+        if not save_path:
+            return
+        try:
+            generate_auto_recognize_script(source, output_path=save_path, rec_path=rec_path)
+            messagebox.showinfo("导出成功", f"脚本已导出到:\n{save_path}")
+        except Exception as exc:
+            messagebox.showerror("导出失败", str(exc))
 
     def _on_cancel(self) -> None:
         self.window.destroy()
