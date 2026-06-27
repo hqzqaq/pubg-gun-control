@@ -99,13 +99,74 @@ def _extract_green_points_opencv(img):
 
 
 def extract_green_points(img):
-    """从 BGR 图像中提取绿点坐标，按 y 从下往上排序（先打的在前）"""
+    """从 BGR 图像中提取弹孔坐标，按 y 从下往上排序（先打的在前）
+
+    支持两种弹孔类型：
+    1. 绿色标记点（训练场overlay标记）
+    2. 灰色/黑色弹孔（对墙射击的真实弹痕）
+    """
+    # 策略1: 尝试绿色点检测
     if _HAS_SKIMAGE:
         points = _extract_green_points_blob_log(img)
         h, w = img.shape[:2]
         if 2 <= len(points) <= max(50, (h * w) // 2000):
             return points
+
+    # 策略2: 尝试灰色弹孔检测（对墙射击）
+    gray_points = _extract_gray_holes(img)
+    if len(gray_points) >= 2:
+        return gray_points
+
+    # 策略3: OpenCV绿色轮廓检测（回退）
     return _extract_green_points_opencv(img)
+
+
+def _extract_gray_holes(img):
+    """提取灰色/黑色弹孔（对墙射击的真实弹痕）
+
+    策略：在灰度图上找暗色圆形区域（弹孔比周围墙面暗）
+    """
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    h, w = gray.shape
+
+    # 高斯模糊去噪
+    blurred = cv2.GaussianBlur(gray, (5, 5), 1.0)
+
+    # 自适应阈值：比平均亮度暗很多的区域视为弹孔
+    mean_val = np.mean(blurred)
+    thresh_val = max(30, int(mean_val * 0.55))
+    _, binary = cv2.threshold(blurred, thresh_val, 255, cv2.THRESH_BINARY_INV)
+
+    # 形态学操作：去噪 + 闭合
+    kernel = np.ones((3, 3), np.uint8)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    points = []
+    min_area = max(5, (h * w) // 50000)
+    max_area = (h * w) // 50
+
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+        if area < min_area or area > max_area:
+            continue
+        # 圆度过滤：弹孔近似圆形
+        perimeter = cv2.arcLength(cnt, True)
+        if perimeter == 0:
+            continue
+        circularity = 4 * np.pi * area / (perimeter * perimeter)
+        if circularity < 0.3:
+            continue
+        M = cv2.moments(cnt)
+        if M["m00"] != 0:
+            cx = int(M["m10"] / M["m00"])
+            cy = int(M["m01"] / M["m00"])
+            points.append((cx, cy))
+
+    points.sort(key=lambda p: p[1], reverse=True)
+    return points
 
 
 def points_to_cumulative_y(points, scale=1.0):

@@ -222,58 +222,85 @@ class GunControlApp:
         import tkinter as tk
         from tkinter import filedialog, messagebox, ttk
         from pubg_gun_control.ballistic_analyzer import analyze_spray_image, format_lua_function
-        from pubg_gun_control.lua_parser import LuaBallisticParser, GunCoefficients
+
+        GUN_INTERVALS = {
+            "M416": 87, "Beryl M762": 87, "AKM": 102, "AUG": 85, "SCAR-L": 96,
+            "QBZ": 92, "G36C": 86, "ACE32": 90, "UMP45": 94, "MP5K": 94,
+            "Vector": 57, "Micro UZI": 46, "P90": 61, "M249": 222, "M16A4": 280,
+            "Groza": 80, "MK47": 300, "Tommy Gun": 84, "Famas": 65, "MG3": 60,
+        }
 
         root = tk.Tk()
         root.title("弹道分析")
         root.attributes("-topmost", True)
         root.grab_set()
-        root.geometry("400x250")
+        root.geometry("480x350")
 
         ttk.Label(root, text="从弹孔截图自动提取弹道数据", font=("Arial", 11, "bold")).pack(pady=(10, 5))
+        ttk.Label(root, text="支持灰色/黑色弹孔（对墙射击）和绿色标记点", font=("Arial", 9), foreground="gray").pack()
 
         file_frame = ttk.Frame(root)
-        file_frame.pack(fill=tk.X, padx=10, pady=3)
-        self._analysis_file_var = tk.StringVar()
+        file_frame.pack(fill=tk.X, padx=10, pady=5)
         ttk.Label(file_frame, text="弹孔截图:").pack(side=tk.LEFT)
-        ttk.Entry(file_frame, textvariable=self._analysis_file_var, width=30).pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
-        ttk.Button(file_frame, text="选择", width=5, command=lambda: self._analysis_file_var.set(
-            filedialog.askopenfilename(filetypes=[("图片", "*.png *.jpg *.jpeg *.bmp")]) or self._analysis_file_var.get()
-        )).pack(side=tk.LEFT)
+        file_var = tk.StringVar()
+        file_entry = ttk.Entry(file_frame, textvariable=file_var, width=35)
+        file_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+
+        def select_file():
+            path = filedialog.askopenfilename(filetypes=[("图片", "*.png *.jpg *.jpeg *.bmp")])
+            if path:
+                file_var.set(path)
+
+        ttk.Button(file_frame, text="选择", width=5, command=select_file).pack(side=tk.LEFT)
 
         name_frame = ttk.Frame(root)
         name_frame.pack(fill=tk.X, padx=10, pady=3)
         ttk.Label(name_frame, text="枪械名称:").pack(side=tk.LEFT)
-        self._analysis_gun_var = tk.StringVar(value="M416")
-        ttk.Entry(name_frame, textvariable=self._analysis_gun_var, width=20).pack(side=tk.LEFT, padx=5)
+        gun_var = tk.StringVar(value="M416")
+        gun_combo = ttk.Combobox(name_frame, textvariable=gun_var, values=list(GUN_INTERVALS.keys()), width=15)
+        gun_combo.pack(side=tk.LEFT, padx=5)
 
         param_frame = ttk.Frame(root)
         param_frame.pack(fill=tk.X, padx=10, pady=3)
         ttk.Label(param_frame, text="射击间隔(ms):").pack(side=tk.LEFT)
-        self._analysis_interval_var = tk.IntVar(value=87)
-        ttk.Spinbox(param_frame, textvariable=self._analysis_interval_var, from_=10, to=500, width=8).pack(side=tk.LEFT, padx=5)
+        interval_var = tk.IntVar(value=87)
+        ttk.Spinbox(param_frame, textvariable=interval_var, from_=10, to=500, width=8).pack(side=tk.LEFT, padx=5)
         ttk.Label(param_frame, text="缩放系数:").pack(side=tk.LEFT, padx=(10, 0))
-        self._analysis_scale_var = tk.DoubleVar(value=0.7)
-        ttk.Spinbox(param_frame, textvariable=self._analysis_scale_var, from_=0.1, to=2.0, increment=0.1, width=6, format="%.1f").pack(side=tk.LEFT, padx=5)
+        scale_var = tk.DoubleVar(value=1.0)
+        ttk.Spinbox(param_frame, textvariable=scale_var, from_=0.1, to=3.0, increment=0.1, width=6, format="%.1f").pack(side=tk.LEFT, padx=5)
 
-        result_label = ttk.Label(root, text="", foreground="green", wraplength=380)
-        result_label.pack(pady=5)
+        def on_gun_change(event=None):
+            gun = gun_var.get()
+            if gun in GUN_INTERVALS:
+                interval_var.set(GUN_INTERVALS[gun])
+        gun_combo.bind("<<ComboboxSelected>>", on_gun_change)
+
+        ttk.Label(root, text="缩放系数: 1.0=原始像素值, 游戏灵敏度高可调大(1.5~2.0), 低可调小(0.5~0.8)",
+                  font=("Arial", 8), foreground="gray").pack(padx=10, anchor="w")
+
+        result_label = ttk.Label(root, text="", wraplength=450)
+        result_label.pack(pady=8)
 
         def on_analyze():
-            path = self._analysis_file_var.get().strip()
-            gun = self._analysis_gun_var.get().strip()
-            interval = self._analysis_interval_var.get()
-            scale = self._analysis_scale_var.get()
-            if not path or not gun:
-                result_label.config(text="请选择图片并输入枪械名称", foreground="red")
+            path = file_var.get().strip()
+            gun = gun_var.get().strip()
+            interval = interval_var.get()
+            scale = scale_var.get()
+            if not path:
+                result_label.config(text="请选择弹孔截图", foreground="red")
+                return
+            if not gun:
+                result_label.config(text="请输入枪械名称", foreground="red")
                 return
             result = analyze_spray_image(path, scale=scale)
             if not result:
-                result_label.config(text="分析失败：未检测到足够的弹孔", foreground="red")
+                result_label.config(text="分析失败: 未检测到足够的弹孔。尝试调整缩放系数或换一张更清晰的截图", foreground="red")
                 return
             lua_code = format_lua_function(gun, result["ballistic"], interval)
-            result_label.config(text=f"识别到 {result['shot_count']} 个弹孔，生成 {len(result['ballistic'])} 段弹道", foreground="green")
-
+            result_label.config(
+                text=f"识别到 {result['shot_count']} 个弹孔, 生成 {len(result['ballistic'])} 段弹道",
+                foreground="green",
+            )
             save_path = filedialog.asksaveasfilename(
                 title="保存弹道数据",
                 defaultextension=".lua",
@@ -283,7 +310,7 @@ class GunControlApp:
             if save_path:
                 with open(save_path, "w", encoding="utf-8") as f:
                     f.write(lua_code)
-                messagebox.showinfo("保存成功", f"弹道数据已保存到:\n{save_path}\\n\n请在编辑器中将此函数合并到 Lua 脚本中")
+                messagebox.showinfo("保存成功", f"弹道数据已保存到:\n{save_path}\n\n请在编辑器中将此函数合并到Lua脚本中")
 
         ttk.Button(root, text="分析弹道", command=on_analyze, width=12).pack(pady=10)
         root.mainloop()
