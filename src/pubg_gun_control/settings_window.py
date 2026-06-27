@@ -5,7 +5,7 @@
 
 @author huquanzhi
 @since 2026-04-18 19:38
-@version 3.0
+@version 3.1
 """
 
 import logging
@@ -28,10 +28,10 @@ _VOICE_EVENT_LABELS: dict[str, str] = {
 
 _ATTACH_COLS = ("muzzle", "grip", "stock")
 _ATTACH_LABELS = {"muzzle": "枪口", "grip": "握把", "stock": "枪托"}
+_AMMO_LABELS = {"7.62": "7.62mm", "5.56": "5.56mm", "9mm": "9mm"}
 
 
 def _load_guns_from_lua() -> dict[str, list[str]]:
-    """从 Lua 脚本解析枪械列表，按弹药类型分组"""
     from pubg_gun_control.lua_parser import LuaBallisticParser
     lua_path = str(Path(__file__).resolve().parent.parent.parent / "1.2.2-2024.5.20.-GHUB.-github.lua")
     try:
@@ -39,20 +39,21 @@ def _load_guns_from_lua() -> dict[str, list[str]]:
         config = parser.parse(lua_path)
         result: dict[str, list[str]] = {}
         for ammo, guns in config.ammo_groups.items():
-            result[ammo] = [g.name for g in guns]
+            key = "9mm" if ammo == ".45" else ammo
+            if key not in result:
+                result[key] = []
+            result[key].extend(g.name for g in guns)
         return result
     except Exception:
         logger.warning("无法解析 Lua 脚本，使用默认枪械列表")
         return {
             "7.62": ["Beryl M762", "AKM", "Groza", "ACE32", "DP-28", "MK47"],
             "5.56": ["AUG", "M416", "P90", "M249", "M16A4", "SCAR-L", "QBZ", "G36C"],
-            ".45": ["Tommy Gun"],
-            "9mm": ["Vector", "Micro UZI", "UMP45", "MP5K"],
+            "9mm": ["Tommy Gun", "Vector", "Micro UZI", "UMP45", "MP5K"],
         }
 
 
 class SettingsWindow:
-    """设置窗口"""
 
     def __init__(
         self,
@@ -97,7 +98,7 @@ class SettingsWindow:
         }
         self._guns_by_ammo = _load_guns_from_lua()
         self._checkbox_vars: dict[str, dict[str, tk.BooleanVar]] = {}
-        self._selected_gun: str | None = None
+        self._init_all_checkbox_vars()
         self._create_window()
 
     @staticmethod
@@ -111,13 +112,26 @@ class SettingsWindow:
                     result[key] = value
         return result
 
+    def _init_all_checkbox_vars(self) -> None:
+        for ammo, guns in self._guns_by_ammo.items():
+            for gun in guns:
+                ga = self.gun_attachments.get(gun, {"muzzle": True, "grip": True, "stock": True})
+                self._checkbox_vars[gun] = {
+                    cat: tk.BooleanVar(value=ga.get(cat, True)) for cat in _ATTACH_COLS
+                }
+
+    def _get_gun_vars(self, gun: str) -> dict[str, tk.BooleanVar]:
+        if gun not in self._checkbox_vars:
+            self._checkbox_vars[gun] = {cat: tk.BooleanVar(value=True) for cat in _ATTACH_COLS}
+        return self._checkbox_vars[gun]
+
     def _create_window(self) -> None:
         self.window = tk.Toplevel(self.parent)
         self.window.title("枪械配置")
         self.window.resizable(True, True)
         self.window.attributes("-topmost", True)
         self.window.grab_set()
-        self.window.geometry("520x650")
+        self.window.geometry("520x700")
 
         main_frame = ttk.Frame(self.window, padding=8)
         main_frame.pack(fill=tk.BOTH, expand=True)
@@ -135,12 +149,12 @@ class SettingsWindow:
     # ---- 枪械配置区 ----
 
     def _create_gun_section(self, parent: ttk.Frame, row: int) -> None:
-        frame = ttk.LabelFrame(parent, text="枪械配置（从 Lua 脚本读取）", padding=5)
+        frame = ttk.LabelFrame(parent, text="枪械配置", padding=5)
         frame.grid(row=row, column=0, sticky="nsew", pady=(0, 5))
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(1, weight=1)
 
-        ttk.Label(frame, text="点击枪械名称后，在下方勾选支持的配件").grid(
+        ttk.Label(frame, text="点击行选中枪械，点击枪口/握把/枪托列切换勾选状态").grid(
             row=0, column=0, sticky="w", pady=(0, 3)
         )
 
@@ -160,94 +174,97 @@ class SettingsWindow:
         self._tree.column("grip", width=60, anchor="center")
         self._tree.column("stock", width=60, anchor="center")
 
+        self._tree.tag_configure("on", foreground="#2e7d32")
+        self._tree.tag_configure("off", foreground="#9e9e9e")
+
         scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self._tree.yview)
         self._tree.configure(yscrollcommand=scrollbar.set)
         self._tree.grid(row=0, column=0, sticky="nsew")
         scrollbar.grid(row=0, column=1, sticky="ns")
 
-        self._tree.bind("<<TreeviewSelect>>", self._on_tree_select)
-        self._tree.bind("<ButtonRelease-1>", self._on_tree_click)
         self._populate_tree()
+        self._tree.bind("<ButtonRelease-1>", self._on_tree_click)
+
+        detail_outer = ttk.Frame(frame)
+        detail_outer.grid(row=2, column=0, sticky="ew", pady=(5, 0))
+        self._detail_frame = ttk.LabelFrame(detail_outer, text="选中枪械的配件", padding=5)
+        self._detail_frame.pack(fill=tk.X)
+        self._detail_label = ttk.Label(self._detail_frame, text="请在上方点击枪械行")
+        self._detail_label.grid(row=0, column=0, columnspan=6)
+        self._detail_checkbuttons: dict[str, ttk.Checkbutton] = {}
 
         btn_row = ttk.Frame(frame)
         btn_row.grid(row=3, column=0, sticky="w", pady=(3, 0))
         ttk.Button(btn_row, text="添加枪械", command=self._on_add_gun, width=10).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(btn_row, text="删除选中", command=self._on_delete_gun, width=10).pack(side=tk.LEFT)
 
-    _CHECK = "\u2611"  # ☑
-    _UNCHECK = "\u2610"  # ☐
-
     def _populate_tree(self) -> None:
         for item in self._tree.get_children():
             self._tree.delete(item)
-
-        ammo_labels = {"7.62": "7.62mm", "5.56": "5.56mm", ".45": ".45 ACP", "9mm": "9mm"}
-
         for ammo, guns in self._guns_by_ammo.items():
-            label = ammo_labels.get(ammo, ammo)
+            label = _AMMO_LABELS.get(ammo, ammo)
             parent_id = self._tree.insert("", "end", text=label, open=True, values=("", "", ""))
             for gun in guns:
-                ga = self.gun_attachments.get(gun, {"muzzle": True, "grip": True, "stock": True})
-                m = self._CHECK if ga.get("muzzle", True) else self._UNCHECK
-                g = self._CHECK if ga.get("grip", True) else self._UNCHECK
-                s = self._CHECK if ga.get("stock", True) else self._UNCHECK
-                self._tree.insert(parent_id, "end", iid=gun, text=gun, values=(m, g, s))
+                self._insert_gun_row(parent_id, gun)
 
-    def _on_tree_select(self, event) -> None:
-        sel = self._tree.selection()
-        if not sel:
-            return
-        gun = sel[0]
-        if gun in self._guns_by_ammo:
-            return
-        self._selected_gun = gun
-        self._show_attachment_detail(gun)
+    def _insert_gun_row(self, parent: str, gun: str) -> None:
+        vars = self._get_gun_vars(gun)
+        vals = []
+        tags = []
+        for cat in _ATTACH_COLS:
+            if vars[cat].get():
+                vals.append("[x]")
+                tags.append("on")
+            else:
+                vals.append("[ ]")
+                tags.append("off")
+        self._tree.insert(parent, "end", iid=gun, text=gun, values=vals, tags=tuple(tags))
+
+    def _refresh_gun_row(self, gun: str) -> None:
+        vars = self._get_gun_vars(gun)
+        vals = []
+        tags = []
+        for cat in _ATTACH_COLS:
+            if vars[cat].get():
+                vals.append("[x]")
+                tags.append("on")
+            else:
+                vals.append("[ ]")
+                tags.append("off")
+        self._tree.item(gun, values=vals, tags=tuple(tags))
 
     def _on_tree_click(self, event) -> None:
-        """点击树形列表中的勾选框列，直接切换状态"""
         item = self._tree.identify_row(event.y)
         col = self._tree.identify_column(event.x)
+
         if not item or item in self._guns_by_ammo:
             return
-        col_index = {"#1": "muzzle", "#2": "grip", "#3": "stock"}.get(col)
-        if not col_index:
-            return
-        if item not in self._checkbox_vars:
-            self._checkbox_vars[item] = {}
-            ga = self.gun_attachments.get(item, {"muzzle": True, "grip": True, "stock": True})
-            for cat in _ATTACH_COLS:
-                self._checkbox_vars[item][cat] = tk.BooleanVar(value=ga.get(cat, True))
-        var = self._checkbox_vars[item][col_index]
-        var.set(not var.get())
-        self._sync_tree_display(item)
-        self._selected_gun = item
-        self._show_attachment_detail(item)
 
-    def _show_attachment_detail(self, gun: str) -> None:
-        if hasattr(self, "_detail_frame"):
-            self._detail_frame.destroy()
+        self._tree.selection_set(item)
+        col_map = {"#1": "muzzle", "#2": "grip", "#3": "stock"}
+        col_name = col_map.get(col)
 
-        self._detail_frame = ttk.LabelFrame(self._tree.master.master, text=f"配件配置: {gun}", padding=5)
-        self._detail_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(5, 0))
+        if col_name:
+            vars = self._get_gun_vars(item)
+            vars[col_name].set(not vars[col_name].get())
+            self._refresh_gun_row(item)
 
-        ga = self.gun_attachments.get(gun, {"muzzle": True, "grip": True, "stock": True})
-        self._checkbox_vars[gun] = {}
+        self._show_detail_panel(item)
+
+    def _show_detail_panel(self, gun: str) -> None:
+        for w in self._detail_frame.winfo_children():
+            w.destroy()
+
+        vars = self._get_gun_vars(gun)
+        ttk.Label(self._detail_frame, text=gun, font=("Arial", 10, "bold")).grid(
+            row=0, column=0, columnspan=6, sticky="w", pady=(0, 3)
+        )
         for i, cat in enumerate(_ATTACH_COLS):
-            var = tk.BooleanVar(value=ga.get(cat, True))
-            self._checkbox_vars[gun][cat] = var
-            ttk.Checkbutton(
-                self._detail_frame, text=_ATTACH_LABELS[cat], variable=var,
-                command=lambda g=gun: self._sync_tree_display(g),
-            ).grid(row=0, column=i, padx=10, pady=3)
-
-    def _sync_tree_display(self, gun: str) -> None:
-        if gun not in self._checkbox_vars:
-            return
-        vars = self._checkbox_vars[gun]
-        m = self._CHECK if vars["muzzle"].get() else self._UNCHECK
-        g = self._CHECK if vars["grip"].get() else self._UNCHECK
-        s = self._CHECK if vars["stock"].get() else self._UNCHECK
-        self._tree.item(gun, values=(m, g, s))
+            cb = ttk.Checkbutton(
+                self._detail_frame, text=_ATTACH_LABELS[cat], variable=vars[cat],
+                command=lambda g=gun: self._refresh_gun_row(g),
+            )
+            cb.grid(row=1, column=i * 2, padx=(0, 10), sticky="w")
 
     # ---- 语音设置区 ----
 
@@ -357,8 +374,8 @@ class SettingsWindow:
 
         ttk.Label(dialog, text="弹药类型:").pack()
         ammo_var = tk.StringVar(value="5.56")
-        ammo_combo = ttk.Combobox(dialog, textvariable=ammo_var, values=list(self._guns_by_ammo.keys()), width=10, state="readonly")
-        ammo_combo.pack(pady=3)
+        ttk.Combobox(dialog, textvariable=ammo_var, values=list(self._guns_by_ammo.keys()),
+                     width=10, state="readonly").pack(pady=3)
 
         def confirm():
             name = name_var.get().strip()
@@ -370,6 +387,7 @@ class SettingsWindow:
             if name in self._guns_by_ammo[ammo]:
                 return
             self._guns_by_ammo[ammo].append(name)
+            self._checkbox_vars[name] = {cat: tk.BooleanVar(value=True) for cat in _ATTACH_COLS}
             self.gun_attachments[name] = {"muzzle": True, "grip": True, "stock": True}
             self._populate_tree()
             dialog.destroy()
@@ -396,12 +414,11 @@ class SettingsWindow:
         for ammo, guns in self._guns_by_ammo.items():
             for gun in guns:
                 if gun in self._checkbox_vars:
-                    new_gun_attachments[gun] = {
-                        cat: var.get() for cat, var in self._checkbox_vars[gun].items()
-                    }
+                    new_gun_attachments[gun] = {cat: var.get() for cat, var in self._checkbox_vars[gun].items()}
                 else:
-                    ga = self.gun_attachments.get(gun, {"muzzle": True, "grip": True, "stock": True})
-                    new_gun_attachments[gun] = ga
+                    new_gun_attachments[gun] = self.gun_attachments.get(
+                        gun, {"muzzle": True, "grip": True, "stock": True}
+                    )
 
         voice_enabled = self.voice_enabled_var.get()
         voice_volume = int(self.voice_volume_var.get())
@@ -421,9 +438,9 @@ class SettingsWindow:
                 "threshold_scope": round(self.threshold_scope_var.get(), 2),
             }
             self.on_recognition_save(rec_cfg)
-        self.window.destroy()
 
     def _on_export_lua(self) -> None:
+        from tkinter import filedialog, messagebox
         from tkinter import filedialog, messagebox
         from pubg_gun_control.lua_generator import generate_auto_recognize_script
 
