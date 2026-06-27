@@ -32,11 +32,26 @@ local _capsWasOn = false
 
 AUTO_RECOGNIZE_FUNCS = """
 -- ====== 自动识别函数（由 Python 程序注入） ======
+function pubg.loadRecResult()
+    local success, err = pcall(function()
+        dofile(REC_PATH)
+    end)
+    if not success then
+        OutputLogMessage("[AUTO] 读取识别结果失败: %s\\n", tostring(err))
+        return false
+    end
+    return true
+end
+
 function pubg.applyRecResult()
     if pubg.stateLocked then return end
     if rec_gun ~= "" and rec_gun ~= pubg.getCurrentGunName() then
-        OutputLogMessage("[AUTO] 切换枪械: %s -> %s\\n", pubg.getCurrentGunName(), rec_gun)
-        pubg.setGun(rec_gun)
+        if pubg[rec_gun] then
+            OutputLogMessage("[AUTO] 切换枪械: %s -> %s\\n", pubg.getCurrentGunName(), rec_gun)
+            pubg.setGun(rec_gun)
+        else
+            OutputLogMessage("[AUTO] 枪械 %s 无弹道数据，跳过\\n", rec_gun)
+        end
     end
     if rec_muzzle and rec_muzzle ~= pubg.muzzleIndex then
         OutputLogMessage("[AUTO] 枪口: %d -> %d\\n", pubg.muzzleIndex, rec_muzzle)
@@ -135,6 +150,17 @@ def generate_auto_recognize_script(
             + AUTO_RECOGNIZE_EVENT_BLOCK
             + new_source[idx:]
         )
+
+    init_line = "pubg.gunOptions[type][gunCount] = pubg[gunName](gunName)"
+    safe_init = (
+        "if pubg[gunName] then\n"
+        "\t\t\t\t\tpubg.gunOptions[type][gunCount] = pubg[gunName](gunName)\n"
+        "\t\t\t\telse\n"
+        "\t\t\t\t\tpubg.gunOptions[type][gunCount] = { duration=0, amount=0, interval=100, ballistic={0}, ctrlmodeRatio=1, BreathRatio=1, LuopeiRatio=1, ManpeiRatio=1, PaziRatio=1, scopeX2Ratio=1, scopeX3Ratio=1 }\n"
+        "\t\t\t\t\tOutputLogMessage(\"[WARN] %s 无弹道数据，已跳过\\n\", gunName)\n"
+        "\t\t\t\tend"
+    )
+    new_source = new_source.replace(init_line, safe_init)
 
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(new_source)

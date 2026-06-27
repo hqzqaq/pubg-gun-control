@@ -131,7 +131,7 @@ class SettingsWindow:
         self.window.resizable(True, True)
         self.window.attributes("-topmost", True)
         self.window.grab_set()
-        self.window.geometry("520x700")
+        self.window.geometry("650x800")
 
         main_frame = ttk.Frame(self.window, padding=8)
         main_frame.pack(fill=tk.BOTH, expand=True)
@@ -366,7 +366,7 @@ class SettingsWindow:
         dialog.title("添加枪械")
         dialog.attributes("-topmost", True)
         dialog.grab_set()
-        dialog.geometry("300x120")
+        dialog.geometry("300x150")
 
         ttk.Label(dialog, text="枪械名称:").pack(pady=(10, 0))
         name_var = tk.StringVar()
@@ -389,6 +389,7 @@ class SettingsWindow:
             self._guns_by_ammo[ammo].append(name)
             self._checkbox_vars[name] = {cat: tk.BooleanVar(value=True) for cat in _ATTACH_COLS}
             self.gun_attachments[name] = {"muzzle": True, "grip": True, "stock": True}
+            self._sync_lua_canuse(name, ammo, add=True)
             self._populate_tree()
             dialog.destroy()
 
@@ -401,13 +402,47 @@ class SettingsWindow:
         gun = sel[0]
         if gun in self._guns_by_ammo:
             return
-        for ammo, guns in self._guns_by_ammo.items():
+        ammo = None
+        for a, guns in self._guns_by_ammo.items():
             if gun in guns:
                 guns.remove(gun)
+                ammo = a
                 break
         self.gun_attachments.pop(gun, None)
         self._checkbox_vars.pop(gun, None)
+        if ammo:
+            self._sync_lua_canuse(gun, ammo, add=False)
         self._populate_tree()
+
+    def _sync_lua_canuse(self, gun_name: str, ammo: str, add: bool) -> None:
+        """同步枪械变更到 Lua 脚本的 canUse"""
+        from pubg_gun_control.lua_parser import LuaBallisticParser, BallisticConfig, GunCoefficients
+        lua_path = str(Path(__file__).resolve().parent.parent.parent / "1.2.2-2024.5.20.-GHUB.-github.lua")
+        try:
+            parser = LuaBallisticParser()
+            config = parser.parse(lua_path)
+
+            if add:
+                if ammo not in config.ammo_groups:
+                    config.ammo_groups[ammo] = []
+                exists = any(g.name == gun_name for g in config.ammo_groups[ammo])
+                if not exists:
+                    config.ammo_groups[ammo].append(GunCoefficients(
+                        name=gun_name, mode=1,
+                        coef=1.0, crouch=0.8, breath=1.3,
+                        bare=1.25, full=2.0, prone=0.5,
+                        scope2x=1.1, scope3x=0.7,
+                    ))
+            else:
+                if ammo in config.ammo_groups:
+                    config.ammo_groups[ammo] = [
+                        g for g in config.ammo_groups[ammo] if g.name != gun_name
+                    ]
+
+            parser.serialize(config, lua_path, backup=True)
+            logger.info("Lua canUse 已更新: %s %s (%s)", "添加" if add else "删除", gun_name, ammo)
+        except Exception:
+            logger.exception("同步 Lua canUse 失败")
 
     def _on_save(self) -> None:
         new_gun_attachments: dict[str, dict[str, bool]] = {}
