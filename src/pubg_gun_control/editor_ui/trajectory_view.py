@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (  # noqa: E402
     QComboBox,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -241,6 +242,22 @@ class TrajectoryView(QWidget):
             toolbar.addWidget(cb)
             self._overlay_checks[scope] = cb
         toolbar.addStretch(1)
+
+        toolbar.addSpacing(16)
+        toolbar.addWidget(QLabel("缩放:"))
+        btn_zoom_in = QPushButton("+")
+        btn_zoom_in.setFixedSize(28, 24)
+        btn_zoom_in.clicked.connect(lambda: self._zoom(0.7))
+        toolbar.addWidget(btn_zoom_in)
+        btn_zoom_out = QPushButton("-")
+        btn_zoom_out.setFixedSize(28, 24)
+        btn_zoom_out.clicked.connect(lambda: self._zoom(1.4))
+        toolbar.addWidget(btn_zoom_out)
+        btn_zoom_reset = QPushButton("重置")
+        btn_zoom_reset.setFixedSize(40, 24)
+        btn_zoom_reset.clicked.connect(self._zoom_reset)
+        toolbar.addWidget(btn_zoom_reset)
+
         layout.addLayout(toolbar)
 
         # 画布
@@ -261,6 +278,23 @@ class TrajectoryView(QWidget):
         self._overlay_scopes = {
             s for s, cb in self._overlay_checks.items() if cb.isChecked()
         }
+        self._redraw()
+
+    def _zoom(self, factor: float) -> None:
+        """缩放视图，factor<1 放大，factor>1 缩小"""
+        ax = self._ax
+        xlim = ax.get_xlim()
+        ylim = ax.get_ylim()
+        cx = (xlim[0] + xlim[1]) / 2
+        cy = (ylim[0] + ylim[1]) / 2
+        rx = (xlim[1] - xlim[0]) / 2 * factor
+        ry = (ylim[1] - ylim[0]) / 2 * factor
+        ax.set_xlim(cx - rx, cx + rx)
+        ax.set_ylim(cy - ry, cy + ry)
+        self._canvas.draw_idle()
+
+    def _zoom_reset(self) -> None:
+        """重置视图为自动适应"""
         self._redraw()
 
     def _scope_factor_for(self, scope: int) -> float:
