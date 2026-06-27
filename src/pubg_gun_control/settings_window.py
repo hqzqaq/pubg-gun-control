@@ -502,9 +502,10 @@ class SettingsWindow:
 
     def _on_export_dofile(self) -> None:
         from tkinter import filedialog, messagebox
-        from pubg_gun_control.lua_generator import generate_dofile_wrapper
+        from pubg_gun_control.lua_generator import generate_dofile_files
 
         project_root = Path(__file__).resolve().parent.parent.parent
+        source = str(project_root / "1.2.2-2024.5.20.-GHUB.-github.lua")
         config_path = str(project_root / "pubg_config.lua")
         rec_path = self.rec_path_var.get().strip()
         if not rec_path:
@@ -519,14 +520,17 @@ class SettingsWindow:
         if not save_path:
             return
         try:
-            generate_dofile_wrapper(config_path, rec_path=rec_path, output_path=save_path)
+            wrapper, config = generate_dofile_files(
+                source, config_output=config_path, wrapper_output=save_path, rec_path=rec_path,
+            )
             messagebox.showinfo(
                 "导出成功",
-                f"包装脚本已导出到:\n{save_path}\n\n"
-                f"配置文件路径: {config_path}\n"
+                f"包装脚本: {wrapper}\n"
+                f"配置文件: {config}\n\n"
+                f"使用方法:\n"
                 f"1. 将包装脚本粘贴到 GHUB\n"
-                f"2. 编辑器保存时会自动写入配置文件\n"
-                f"3. CapsLock 开关时 GHUB 自动读取最新配置",
+                f"2. 用编辑器修改弹道参数并保存\n"
+                f"3. CapsLock 开关时 GHUB 自动加载最新配置",
             )
         except Exception as exc:
             messagebox.showerror("导出失败", str(exc))

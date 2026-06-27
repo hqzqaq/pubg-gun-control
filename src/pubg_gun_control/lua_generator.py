@@ -173,103 +173,243 @@ def generate_auto_recognize_script(
 # dofile 模式：包装脚本 + 配置文件分离
 # ---------------------------------------------------------------------------
 
-DOFILE_WRAPPER = r'''-- PUBG 自动压枪脚本（dofile 模式）
--- 此脚本粘贴到 GHUB 中，通过 dofile 加载本地配置文件
--- 编辑器保存配置后，下次 CapsLock 开关自动生效
+def generate_dofile_files(
+    source_path: str,
+    config_output: str | None = None,
+    wrapper_output: str | None = None,
+    rec_path: str | None = None,
+) -> tuple[str, str]:
+    """生成 dofile 模式的两个文件：包装脚本 + 配置文件
 
-EnablePrimaryMouseButtonEvents(true)
+    包装脚本：包含所有函数 + OnEvent + dofile加载逻辑 → 粘贴到 GHUB
+    配置文件：只包含数据（attachmentConfig/gunNoStock/userInfo/枪械弹道）→ 编辑器保存到此
 
-local CONFIG_PATH = "%CONFIG_PATH%"
-local REC_PATH = "%REC_PATH%"
-local AUTO_RECOGNIZE = true
-local _capsWasOn = false
-local _configLoaded = false
+    Args:
+        source_path: 原始基础脚本路径
+        config_output: 配置文件输出路径
+        wrapper_output: 包装脚本输出路径
+        rec_path: rec.lua 路径
 
-rec_gun = ""
-rec_muzzle = 1
-rec_grip = 1
-rec_stock = 1
-rec_scope = 1
+    Returns:
+        (wrapper_path, config_path)
+    """
+    project_dir = Path(__file__).resolve().parent.parent.parent
+    if config_output is None:
+        config_output = str(project_dir / "pubg_config.lua")
+    if wrapper_output is None:
+        wrapper_output = str(
+            Path(__file__).resolve().parent / "generated" / "ghub_dofile_wrapper.lua"
+        )
 
-function loadConfig()
-    local ok, err = pcall(function() dofile(CONFIG_PATH) end)
-    if ok then
-        _configLoaded = true
-        pubg.init()
-        OutputLogMessage("[CONFIG] 配置已加载\n")
-    else
-        OutputLogMessage("[CONFIG] 加载失败: %s\n", tostring(err))
-    end
-    return ok
-end
+    effective_rec = (rec_path or DEFAULT_REC_PATH).replace("\\", "\\\\")
+    effective_config = config_output.replace("\\", "\\\\")
 
-function loadRecResult()
-    local ok, err = pcall(function() dofile(REC_PATH) end)
-    if not ok then
-        OutputLogMessage("[AUTO] 读取识别结果失败: %s\n", tostring(err))
-    end
-    return ok
-end
+    with open(source_path, "r", encoding="utf-8") as f:
+        source = f.read()
 
-function applyRecResult()
-    if pubg.stateLocked then return end
-    if rec_gun ~= "" and rec_gun ~= pubg.getCurrentGunName() then
-        if pubg[rec_gun] then
-            pubg.setGun(rec_gun)
-        else
-            OutputLogMessage("[AUTO] %s 无弹道数据\n", rec_gun)
-        end
-    end
-    if rec_muzzle and rec_muzzle ~= pubg.muzzleIndex then
-        pubg.muzzleIndex = rec_muzzle
-    end
-    if rec_grip and rec_grip ~= pubg.gripIndex then
-        pubg.gripIndex = rec_grip
-    end
-    if rec_stock then
-        if gunNoStock[rec_gun] then
-            pubg.stockIndex = 1
-        elseif rec_stock ~= pubg.stockIndex then
-            pubg.stockIndex = rec_stock
-        end
-    end
-    if rec_scope and rec_scope >= 1 then
-        local scopeMap = {[1]="scopeX1",[2]="scopeX2",[3]="scopeX3",[4]="scopeX4",[6]="scopeX6"}
-        local s = scopeMap[rec_scope] or "scopeX1"
-        if s ~= pubg.scope_current then
-            pubg.scope_current = s
-        end
-    end
-end
+    # --- 生成配置文件（只保留数据部分）---
+    # 提取 attachmentConfig 到 userInfo 结束（包含 canUse、G_bind 等数据）
+    # 以及所有 pubg["GunName"] 弹道函数
+    config_lines = []
+    config_lines.append("-- 此文件由编辑器自动生成，请勿手动编辑")
+    config_lines.append("-- 路径: " + config_output)
+    config_lines.append("")
 
-function OnEvent(event, arg, family)
-    -- CapsLock 状态变化：开时加载配置 + 读取识别结果
-    local capsOn = IsKeyLockOn("capslock")
-    if capsOn and not _capsWasOn then
-        loadConfig()
-        if AUTO_RECOGNIZE then
-            if loadRecResult() then
-                applyRecResult()
-            end
-        end
-    end
-    _capsWasOn = capsOn
+    # 找到 attachmentConfig 开始到 userInfo 结束
+    in_data_block = False
+    data_depth = 0
+    for line in source.splitlines(keepends=True):
+        stripped = line.strip()
+        if not in_data_block:
+            if stripped.startswith("attachmentConfig"):
+                in_data_block = True
+                data_depth = 0
+        if in_data_block:
+            config_lines.append(line.rstrip("\n"))
+            data_depth += line.count("{") - line.count("}")
+            if data_depth <= 0 and "{" in stripped:
+                in_data_block = False
+                config_lines.append("")
 
-    -- 左键开枪：自动识别模式下读取 rec.lua
-    if AUTO_RECOGNIZE and event == "MOUSE_BUTTON_PRESSED" and arg == 1 and family == "mouse" then
-        if capsOn and _configLoaded then
-            if loadRecResult() then
-                applyRecResult()
-            end
-        end
-    end
+    # 找到所有 pubg["GunName"] 弹道函数
+    in_gun_func = False
+    gun_depth = 0
+    for line in source.splitlines(keepends=True):
+        stripped = line.strip()
+        if not in_gun_func:
+            if stripped.startswith('pubg["') and "function" in stripped:
+                in_gun_func = True
+                gun_depth = 0
+        if in_gun_func:
+            config_lines.append(line.rstrip("\n"))
+            gun_depth += line.count("function") + line.count("{")
+            gun_depth -= line.count("end")
+            if in_gun_func and stripped == "end" and gun_depth <= 0:
+                in_gun_func = False
+                config_lines.append("")
 
-    -- 压枪逻辑
-    if _configLoaded then
-        pubg.OnEvent_NoRecoil(event, arg, family)
-    end
-end
-'''
+    with open(config_output, "w", encoding="utf-8") as f:
+        f.write("\n".join(config_lines))
+    logger.info("已生成配置文件: %s", config_output)
+
+    # --- 生成包装脚本（函数 + OnEvent + dofile逻辑）---
+    # 包含：pubg表定义、所有pubg.*函数、OnEvent、初始化逻辑
+    wrapper_lines = []
+    wrapper_lines.append("-- PUBG 自动压枪脚本（dofile 模式）")
+    wrapper_lines.append("-- 此脚本粘贴到 GHUB 中")
+    wrapper_lines.append("-- 配置文件: " + config_output)
+    wrapper_lines.append("-- 编辑器保存后，CapsLock 开关自动加载最新配置")
+    wrapper_lines.append("")
+    wrapper_lines.append("EnablePrimaryMouseButtonEvents(true)")
+    wrapper_lines.append("")
+    wrapper_lines.append('local CONFIG_PATH = "' + effective_config + '"')
+    wrapper_lines.append('local REC_PATH = "' + effective_rec + '"')
+    wrapper_lines.append("local AUTO_RECOGNIZE = true")
+    wrapper_lines.append("local _capsWasOn = false")
+    wrapper_lines.append("local _configLoaded = false")
+    wrapper_lines.append("")
+    wrapper_lines.append("rec_gun = \"\"")
+    wrapper_lines.append("rec_muzzle = 1")
+    wrapper_lines.append("rec_grip = 1")
+    wrapper_lines.append("rec_stock = 1")
+    wrapper_lines.append("rec_scope = 1")
+    wrapper_lines.append("")
+
+    # 提取 pubg = { 表定义（到 pubg.xLengthForDebug 之前）
+    in_pubg_table = False
+    pubg_depth = 0
+    for line in source.splitlines(keepends=True):
+        stripped = line.strip()
+        if stripped.startswith("pubg = {"):
+            in_pubg_table = True
+            pubg_depth = 0
+        if in_pubg_table:
+            wrapper_lines.append(line.rstrip("\n"))
+            pubg_depth += line.count("{") - line.count("}")
+            if pubg_depth <= 0 and "{" in stripped:
+                in_pubg_table = False
+                break
+
+    # 提取从 pubg.xLengthForDebug 到 OnEvent 之前的所有函数
+    in_functions = False
+    for line in source.splitlines(keepends=True):
+        stripped = line.strip()
+        if "pubg.xLengthForDebug" in stripped:
+            in_functions = True
+        if in_functions:
+            if stripped.startswith("function OnEvent"):
+                break
+            wrapper_lines.append(line.rstrip("\n"))
+
+    # 添加 dofile 相关函数
+    wrapper_lines.append("")
+    wrapper_lines.append("-- dofile 加载函数")
+    wrapper_lines.append("function loadConfig()")
+    wrapper_lines.append("    local ok, err = pcall(function() dofile(CONFIG_PATH) end)")
+    wrapper_lines.append("    if ok then")
+    wrapper_lines.append("        _configLoaded = true")
+    wrapper_lines.append("        pubg.init()")
+    wrapper_lines.append('        OutputLogMessage("[CONFIG] 配置已加载\\n")')
+    wrapper_lines.append("    else")
+    wrapper_lines.append('        OutputLogMessage("[CONFIG] 加载失败: %s\\n", tostring(err))')
+    wrapper_lines.append("    end")
+    wrapper_lines.append("    return ok")
+    wrapper_lines.append("end")
+    wrapper_lines.append("")
+    wrapper_lines.append("function loadRecResult()")
+    wrapper_lines.append("    local ok, err = pcall(function() dofile(REC_PATH) end)")
+    wrapper_lines.append("    if not ok then")
+    wrapper_lines.append('        OutputLogMessage("[AUTO] 读取识别结果失败: %s\\n", tostring(err))')
+    wrapper_lines.append("    end")
+    wrapper_lines.append("    return ok")
+    wrapper_lines.append("end")
+    wrapper_lines.append("")
+    wrapper_lines.append("function applyRecResult()")
+    wrapper_lines.append("    if pubg.stateLocked then return end")
+    wrapper_lines.append("    if rec_gun ~= \"\" and rec_gun ~= pubg.getCurrentGunName() then")
+    wrapper_lines.append("        if pubg[rec_gun] then")
+    wrapper_lines.append("            pubg.setGun(rec_gun)")
+    wrapper_lines.append("        else")
+    wrapper_lines.append('            OutputLogMessage("[AUTO] %s 无弹道数据\\n", rec_gun)')
+    wrapper_lines.append("        end")
+    wrapper_lines.append("    end")
+    wrapper_lines.append("    if rec_muzzle and rec_muzzle ~= pubg.muzzleIndex then")
+    wrapper_lines.append("        pubg.muzzleIndex = rec_muzzle")
+    wrapper_lines.append("    end")
+    wrapper_lines.append("    if rec_grip and rec_grip ~= pubg.gripIndex then")
+    wrapper_lines.append("        pubg.gripIndex = rec_grip")
+    wrapper_lines.append("    end")
+    wrapper_lines.append("    if rec_stock then")
+    wrapper_lines.append("        if gunNoStock[rec_gun] then")
+    wrapper_lines.append("            pubg.stockIndex = 1")
+    wrapper_lines.append("        elseif rec_stock ~= pubg.stockIndex then")
+    wrapper_lines.append("            pubg.stockIndex = rec_stock")
+    wrapper_lines.append("        end")
+    wrapper_lines.append("    end")
+    wrapper_lines.append("    if rec_scope and rec_scope >= 1 then")
+    wrapper_lines.append('        local scopeMap = {[1]="scopeX1",[2]="scopeX2",[3]="scopeX3",[4]="scopeX4",[6]="scopeX6"}')
+    wrapper_lines.append("        local s = scopeMap[rec_scope] or \"scopeX1\"")
+    wrapper_lines.append("        if s ~= pubg.scope_current then")
+    wrapper_lines.append("            pubg.scope_current = s")
+    wrapper_lines.append("        end")
+    wrapper_lines.append("    end")
+    wrapper_lines.append("end")
+
+    # 添加 OnEvent
+    wrapper_lines.append("")
+    wrapper_lines.append("function OnEvent(event, arg, family)")
+    wrapper_lines.append("    local capsOn = IsKeyLockOn(\"capslock\")")
+    wrapper_lines.append("    if capsOn and not _capsWasOn then")
+    wrapper_lines.append("        loadConfig()")
+    wrapper_lines.append("        if AUTO_RECOGNIZE then")
+    wrapper_lines.append("            if loadRecResult() then")
+    wrapper_lines.append("                applyRecResult()")
+    wrapper_lines.append("            end")
+    wrapper_lines.append("        end")
+    wrapper_lines.append("    end")
+    wrapper_lines.append("    _capsWasOn = capsOn")
+    wrapper_lines.append("")
+    wrapper_lines.append("    if AUTO_RECOGNIZE and event == \"MOUSE_BUTTON_PRESSED\" and arg == 1 and family == \"mouse\" then")
+    wrapper_lines.append("        if capsOn and _configLoaded then")
+    wrapper_lines.append("            if loadRecResult() then")
+    wrapper_lines.append("                applyRecResult()")
+    wrapper_lines.append("            end")
+    wrapper_lines.append("        end")
+    wrapper_lines.append("    end")
+    wrapper_lines.append("")
+    wrapper_lines.append("    if _configLoaded then")
+    wrapper_lines.append("        pubg.OnEvent_NoRecoil(event, arg, family)")
+    wrapper_lines.append("    end")
+    wrapper_lines.append("end")
+
+    # 添加工具函数和初始化
+    wrapper_lines.append("")
+    wrapper_lines.append("-- 工具函数")
+    wrapper_lines.append("function math.round(num, digit)")
+    wrapper_lines.append("    local d = 10 ^ (digit or 0)")
+    wrapper_lines.append("    return math.floor((num * d * 10 + 5) / 10) / d")
+    wrapper_lines.append("end")
+    wrapper_lines.append("")
+    wrapper_lines.append("function string.split(str, s)")
+    wrapper_lines.append("    if string.find(str, s) == nil then return { str } end")
+    wrapper_lines.append("    local res = {}")
+    wrapper_lines.append('    local reg = "(.-)" .. s .. "()"')
+    wrapper_lines.append("    local index = 0")
+    wrapper_lines.append("    local last_i")
+    wrapper_lines.append("    for n, i in string.gmatch(str, reg) do")
+    wrapper_lines.append("        index = index + 1")
+    wrapper_lines.append("        res[index] = n")
+    wrapper_lines.append("        last_i = i")
+    wrapper_lines.append("    end")
+    wrapper_lines.append("    res[index + 1] = string.sub(str, last_i)")
+    wrapper_lines.append("    return res")
+    wrapper_lines.append("end")
+
+    with open(wrapper_output, "w", encoding="utf-8") as f:
+        f.write("\n".join(wrapper_lines))
+    logger.info("已生成包装脚本: %s", wrapper_output)
+
+    return wrapper_output, config_output
 
 
 def generate_dofile_wrapper(
@@ -277,16 +417,7 @@ def generate_dofile_wrapper(
     rec_path: str | None = None,
     output_path: str | None = None,
 ) -> str:
-    """生成 dofile 模式的 GHUB 包装脚本
-
-    Args:
-        config_path: 配置文件的本地路径（编辑器保存到此路径）
-        rec_path: rec.lua 路径
-        output_path: 输出路径
-
-    Returns:
-        生成的脚本路径
-    """
+    """生成 dofile 模式的 GHUB 包装脚本（兼容旧接口）"""
     if output_path is None:
         output_path = str(
             Path(__file__).resolve().parent / "generated" / "ghub_dofile_wrapper.lua"
@@ -295,11 +426,6 @@ def generate_dofile_wrapper(
     effective_config = config_path.replace("\\", "\\\\")
     effective_rec = (rec_path or DEFAULT_REC_PATH).replace("\\", "\\\\")
 
-    content = DOFILE_WRAPPER.replace("%CONFIG_PATH%", effective_config)
-    content = content.replace("%REC_PATH%", effective_rec)
-
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(content)
-
-    logger.info("已生成 dofile 包装脚本: %s", output_path)
-    return output_path
+    source = str(Path(__file__).resolve().parent.parent.parent / "1.2.2-2024.5.20.-GHUB.-github.lua")
+    wrapper, _ = generate_dofile_files(source, config_output=config_path, wrapper_output=output_path, rec_path=rec_path)
+    return wrapper
