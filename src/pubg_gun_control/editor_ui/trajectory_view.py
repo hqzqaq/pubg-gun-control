@@ -214,6 +214,7 @@ class TrajectoryView(QWidget):
         self._stock: AttachmentItem | None = None
         self._current_scope: int = 1
         self._overlay_scopes: set[int] = set()
+        self._zoom_factor: float = 1.0
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -264,6 +265,7 @@ class TrajectoryView(QWidget):
         self._figure = Figure(figsize=(5, 5), dpi=100, facecolor="#1e1e1e")
         self._canvas = FigureCanvasQTAgg(self._figure)
         self._canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._canvas.wheelEvent = self._on_wheel
         layout.addWidget(self._canvas)
 
         self._ax = self._figure.add_subplot(111)
@@ -280,22 +282,38 @@ class TrajectoryView(QWidget):
         }
         self._redraw()
 
+    def _on_wheel(self, event) -> None:
+        """鼠标滚轮缩放"""
+        if hasattr(event, 'angleDelta'):
+            delta = event.angleDelta().y()
+            if delta > 0:
+                self._zoom(0.8)
+            elif delta < 0:
+                self._zoom(1.25)
+
     def _zoom(self, factor: float) -> None:
         """缩放视图，factor<1 放大，factor>1 缩小"""
+        self._zoom_factor *= factor
+        self._zoom_factor = max(0.1, min(10.0, self._zoom_factor))
+        self._apply_zoom()
+
+    def _zoom_reset(self) -> None:
+        """重置缩放"""
+        self._zoom_factor = 1.0
+        self._apply_zoom()
+
+    def _apply_zoom(self) -> None:
+        """根据当前缩放因子调整坐标轴范围"""
+        if not hasattr(self, '_auto_xlim'):
+            return
         ax = self._ax
-        xlim = ax.get_xlim()
-        ylim = ax.get_ylim()
-        cx = (xlim[0] + xlim[1]) / 2
-        cy = (ylim[0] + ylim[1]) / 2
-        rx = (xlim[1] - xlim[0]) / 2 * factor
-        ry = (ylim[1] - ylim[0]) / 2 * factor
+        cx = (self._auto_xlim[0] + self._auto_xlim[1]) / 2
+        cy = (self._auto_ylim[0] + self._auto_ylim[1]) / 2
+        rx = (self._auto_xlim[1] - self._auto_xlim[0]) / 2 * self._zoom_factor
+        ry = (self._auto_ylim[1] - self._auto_ylim[0]) / 2 * self._zoom_factor
         ax.set_xlim(cx - rx, cx + rx)
         ax.set_ylim(cy - ry, cy + ry)
         self._canvas.draw_idle()
-
-    def _zoom_reset(self) -> None:
-        """重置视图为自动适应"""
-        self._redraw()
 
     def _scope_factor_for(self, scope: int) -> float:
         """返回某倍镜的系数取值。1x = 自身系数，2x/3x 取对应 scope2x/scope3x 字段。"""
@@ -430,10 +448,14 @@ class TrajectoryView(QWidget):
             f"弹道轨迹 - {self._gun.name}",
             color="white", fontsize=12, fontweight="bold",
         )
-        # 等比例
         self._ax.set_aspect("equal", adjustable="datalim")
         self._figure.tight_layout()
+
         self._canvas.draw_idle()
+        self._auto_xlim = self._ax.get_xlim()
+        self._auto_ylim = self._ax.get_ylim()
+        if self._zoom_factor != 1.0:
+            self._apply_zoom()
 
     def _current_attachment_multiplier(self) -> float:
         """计算当前配件组合的综合系数

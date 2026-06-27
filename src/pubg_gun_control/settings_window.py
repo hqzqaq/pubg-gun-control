@@ -318,6 +318,9 @@ class SettingsWindow:
         ttk.Button(frame, text="导出GHUB脚本", command=self._on_export_lua).grid(
             row=4, column=0, sticky="w", pady=(3, 0)
         )
+        ttk.Button(frame, text="导出dofile脚本（编辑器保存自动生效）", command=self._on_export_dofile).grid(
+            row=4, column=1, columnspan=2, sticky="w", pady=(3, 0), padx=(10, 0)
+        )
 
         thr_frame = ttk.LabelFrame(frame, text="识别阈值（0~1，越低越宽松）", padding=3)
         thr_frame.grid(row=5, column=0, sticky="ew", pady=(5, 0))
@@ -476,7 +479,6 @@ class SettingsWindow:
 
     def _on_export_lua(self) -> None:
         from tkinter import filedialog, messagebox
-        from tkinter import filedialog, messagebox
         from pubg_gun_control.lua_generator import generate_auto_recognize_script
 
         source = str(Path(__file__).resolve().parent.parent.parent / "1.2.2-2024.5.20.-GHUB.-github.lua")
@@ -495,6 +497,37 @@ class SettingsWindow:
         try:
             generate_auto_recognize_script(source, output_path=save_path, rec_path=rec_path)
             messagebox.showinfo("导出成功", f"脚本已导出到:\n{save_path}")
+        except Exception as exc:
+            messagebox.showerror("导出失败", str(exc))
+
+    def _on_export_dofile(self) -> None:
+        from tkinter import filedialog, messagebox
+        from pubg_gun_control.lua_generator import generate_dofile_wrapper
+
+        project_root = Path(__file__).resolve().parent.parent.parent
+        config_path = str(project_root / "pubg_config.lua")
+        rec_path = self.rec_path_var.get().strip()
+        if not rec_path:
+            rec_path = str(project_root / "pubg_rec.lua")
+
+        save_path = filedialog.asksaveasfilename(
+            title="导出dofile包装脚本",
+            defaultextension=".lua",
+            filetypes=[("Lua脚本", "*.lua")],
+            initialfile="ghub_dofile_wrapper.lua",
+        )
+        if not save_path:
+            return
+        try:
+            generate_dofile_wrapper(config_path, rec_path=rec_path, output_path=save_path)
+            messagebox.showinfo(
+                "导出成功",
+                f"包装脚本已导出到:\n{save_path}\n\n"
+                f"配置文件路径: {config_path}\n"
+                f"1. 将包装脚本粘贴到 GHUB\n"
+                f"2. 编辑器保存时会自动写入配置文件\n"
+                f"3. CapsLock 开关时 GHUB 自动读取最新配置",
+            )
         except Exception as exc:
             messagebox.showerror("导出失败", str(exc))
 

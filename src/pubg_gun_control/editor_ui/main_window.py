@@ -202,10 +202,18 @@ class BallisticEditorWindow(QMainWindow):
             return
         self._dirty = False
         bak_path = Path(self._lua_path + ".bak")
+
+        config_path = Path(__file__).resolve().parent.parent.parent.parent / "pubg_config.lua"
+        try:
+            self._parser.serialize(self._config, str(config_path), backup=False)
+            config_msg = f"\n\ndofile配置已同步: {config_path}"
+        except Exception:
+            config_msg = ""
+
         QMessageBox.information(
             self,
             "保存成功",
-            f"已写入：\n{self._lua_path}\n\n备份文件：\n{bak_path}",
+            f"已写入：\n{self._lua_path}\n\n备份文件：\n{bak_path}{config_msg}",
         )
         self._update_status(f"已保存: {self._lua_path}")
 

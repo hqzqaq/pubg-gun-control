@@ -167,3 +167,139 @@ def generate_auto_recognize_script(
 
     logger.info("已生成自动识别脚本: %s", output_path)
     return output_path
+
+
+# ---------------------------------------------------------------------------
+# dofile 模式：包装脚本 + 配置文件分离
+# ---------------------------------------------------------------------------
+
+DOFILE_WRAPPER = r'''-- PUBG 自动压枪脚本（dofile 模式）
+-- 此脚本粘贴到 GHUB 中，通过 dofile 加载本地配置文件
+-- 编辑器保存配置后，下次 CapsLock 开关自动生效
+
+EnablePrimaryMouseButtonEvents(true)
+
+local CONFIG_PATH = "%CONFIG_PATH%"
+local REC_PATH = "%REC_PATH%"
+local AUTO_RECOGNIZE = true
+local _capsWasOn = false
+local _configLoaded = false
+
+rec_gun = ""
+rec_muzzle = 1
+rec_grip = 1
+rec_stock = 1
+rec_scope = 1
+
+function loadConfig()
+    local ok, err = pcall(function() dofile(CONFIG_PATH) end)
+    if ok then
+        _configLoaded = true
+        pubg.init()
+        OutputLogMessage("[CONFIG] 配置已加载\n")
+    else
+        OutputLogMessage("[CONFIG] 加载失败: %s\n", tostring(err))
+    end
+    return ok
+end
+
+function loadRecResult()
+    local ok, err = pcall(function() dofile(REC_PATH) end)
+    if not ok then
+        OutputLogMessage("[AUTO] 读取识别结果失败: %s\n", tostring(err))
+    end
+    return ok
+end
+
+function applyRecResult()
+    if pubg.stateLocked then return end
+    if rec_gun ~= "" and rec_gun ~= pubg.getCurrentGunName() then
+        if pubg[rec_gun] then
+            pubg.setGun(rec_gun)
+        else
+            OutputLogMessage("[AUTO] %s 无弹道数据\n", rec_gun)
+        end
+    end
+    if rec_muzzle and rec_muzzle ~= pubg.muzzleIndex then
+        pubg.muzzleIndex = rec_muzzle
+    end
+    if rec_grip and rec_grip ~= pubg.gripIndex then
+        pubg.gripIndex = rec_grip
+    end
+    if rec_stock then
+        if gunNoStock[rec_gun] then
+            pubg.stockIndex = 1
+        elseif rec_stock ~= pubg.stockIndex then
+            pubg.stockIndex = rec_stock
+        end
+    end
+    if rec_scope and rec_scope >= 1 then
+        local scopeMap = {[1]="scopeX1",[2]="scopeX2",[3]="scopeX3",[4]="scopeX4",[6]="scopeX6"}
+        local s = scopeMap[rec_scope] or "scopeX1"
+        if s ~= pubg.scope_current then
+            pubg.scope_current = s
+        end
+    end
+end
+
+function OnEvent(event, arg, family)
+    -- CapsLock 状态变化：开时加载配置 + 读取识别结果
+    local capsOn = IsKeyLockOn("capslock")
+    if capsOn and not _capsWasOn then
+        loadConfig()
+        if AUTO_RECOGNIZE then
+            if loadRecResult() then
+                applyRecResult()
+            end
+        end
+    end
+    _capsWasOn = capsOn
+
+    -- 左键开枪：自动识别模式下读取 rec.lua
+    if AUTO_RECOGNIZE and event == "MOUSE_BUTTON_PRESSED" and arg == 1 and family == "mouse" then
+        if capsOn and _configLoaded then
+            if loadRecResult() then
+                applyRecResult()
+            end
+        end
+    end
+
+    -- 压枪逻辑
+    if _configLoaded then
+        pubg.OnEvent_NoRecoil(event, arg, family)
+    end
+end
+'''
+
+
+def generate_dofile_wrapper(
+    config_path: str,
+    rec_path: str | None = None,
+    output_path: str | None = None,
+) -> str:
+    """生成 dofile 模式的 GHUB 包装脚本
+
+    Args:
+        config_path: 配置文件的本地路径（编辑器保存到此路径）
+        rec_path: rec.lua 路径
+        output_path: 输出路径
+
+    Returns:
+        生成的脚本路径
+    """
+    if output_path is None:
+        output_path = str(
+            Path(__file__).resolve().parent / "generated" / "ghub_dofile_wrapper.lua"
+        )
+
+    effective_config = config_path.replace("\\", "\\\\")
+    effective_rec = (rec_path or DEFAULT_REC_PATH).replace("\\", "\\\\")
+
+    content = DOFILE_WRAPPER.replace("%CONFIG_PATH%", effective_config)
+    content = content.replace("%REC_PATH%", effective_rec)
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    logger.info("已生成 dofile 包装脚本: %s", output_path)
+    return output_path
