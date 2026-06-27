@@ -118,12 +118,9 @@ userInfo = {
 			{ "QBZ",            1,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50,		1.10,		0.70},
 			{ "G36C",           1,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50,		1.10,		0.70},
 		},
-		[".45"] = {
-			-- 枪械             模式         系数		  下蹲系数	   屏息系数	    裸配系数 	    满配系数      趴姿系数	  二倍系数    三倍系数
-			{ "Tommy Gun",      0,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50,		1.10,		1.70},
-		},
 		["9mm"] = {
 			-- 枪械             模式         系数		  下蹲系数	   屏息系数	    裸配系数	    满配系数      趴姿系数	  二倍系数    三倍系数
+			{ "Tommy Gun",      0,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50,		1.10,		1.70},
 			{ "Vector",         0,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50,		1.10,		0.70},
 			{ "Micro UZI",      0,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50,		1.10,		0.70},
 			{ "UMP45",          1,          5.70,		0.80,		1.30,		1.25,		4.90,		0.50,		1.40,		0.90},
@@ -238,13 +235,11 @@ userInfo = {
 -- internal configuration
 pubg = {
 	gun = {
-		[".45"] = {},
 		["9mm"] = {},
 		["5.56"] = {},
 		["7.62"] = {},
 	}, -- 枪械库
 	gunOptions = {
-		[".45"] = {},
 		["9mm"] = {},
 		["5.56"] = {},
 		["7.62"] = {},
@@ -880,7 +875,7 @@ pubg["ACE32"] = function (gunName)
 end
 -- [[通过枪械名查找在 canuse 中的项]]
 function pubg.canUseFindByGunName (gunName)
-	local forList = { ".45", "9mm", "5.56", "7.62" }
+	local forList = { "9mm", "5.56", "7.62" }
 
 	for i = 1, #forList do
 		local bulletType = forList[i]
@@ -944,7 +939,7 @@ end
 function pubg.init ()
 
 	-- Clean up the firearms Depot
-	local forList = { ".45", "9mm", "5.56", "7.62" }
+	local forList = { "9mm", "5.56", "7.62" }
 
 	for i = 1, #forList do
 
@@ -1101,7 +1096,7 @@ function pubg.setBulletType (bulletType)
 	pubg.gunIndex = 1
 	pubg.allCanUse_index = 0
 
-	local forList = { ".45", "9mm", "5.56", "7.62" }
+	local forList = { "9mm", "5.56", "7.62" }
 
 	for i = 1, #forList do
 		local type = forList[i]
@@ -1404,7 +1399,7 @@ function pubg.setGun (gunName)
 		return
 	end
 
-	local forList = { ".45", "9mm", "5.56", "7.62" }
+	local forList = { "9mm", "5.56", "7.62" }
 	local allCanUse_index = 0
 
 	for i = 1, #forList do
@@ -1667,7 +1662,6 @@ function pubg.runCmd (cmd)
 	if cmd == "" then cmd = "none" end
 	local switch = {
 		["none"] = function () end,
-		[".45"] = pubg.setBulletType,
 		["9mm"] = pubg.setBulletType,
 		["5.56"] = pubg.setBulletType,
 		["7.62"] = pubg.setBulletType,
@@ -1753,7 +1747,7 @@ end
 
 --[[ Output switching table ]]
 function pubg.outputLogGunSwitchTable ()
-	local forList = { ".45", "9mm", "5.56", "7.62" }
+	local forList = { "9mm", "5.56", "7.62" }
 	local allCount = 0
 	local resStr = "      canUse_i\t      series_i\t      Series\t      ratio\t      ctrl ratio\t      Breath\t      Luopei\t      Sanbei\t      Pazi\t      Gun Name\n\n"
 
