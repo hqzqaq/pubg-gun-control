@@ -84,7 +84,7 @@ userInfo = {
 		scopeX6 = 1.25,-- 六倍 | sixfold scope
 	},
 	autoPressAimKey = "",
-	startControl = "capslock",	-- 启动控制 (capslock  | numlock   | G_bind )
+	startControl = "capslock",	-- 启动控制 (capslock | numlock)
 	aimingSettings = "ctrlmode",
 	customAimingSettings = {
 		-- 开镜判断
@@ -130,103 +130,6 @@ userInfo = {
 	},
 
 
-	-- G键自定义绑定，多余的组合键可以删除
-	-- 可绑定指令请参考:
-	-- 指令绑定演示参考: https://github.com/kiccer/Soldier76#g_bind-%E6%8C%87%E4%BB%A4%E7%BB%91%E5%AE%9A%E6%BC%94%E7%A4%BA
-	G_bind = {
-		-- G
-		["G3"] = "",
-		["G4"] = "",
-		["G5"] = "",
-		["G6"] = "",
-		["G7"] = "",
-		["G8"] = "",
-		["G9"] = "",
-		["G10"] = "",
-		["G11"] = "",
-		-- lalt + G
-		["lalt + G3"] = "cycle_muzzle",
-		["lalt + G4"] = "UMP45",
-		["lalt + G5"] = "MP5K",
-		["lalt + G6"] = "",
-		["lalt + G7"] = "",
-		["lalt + G8"] = "",
-		["lalt + G9"] = "",
-		["lalt + G10"] = "",
-		["lalt + G11"] = "",
-		-- lctrl + G
-		["lctrl + G3"] = "cycle_grip",
-		["lctrl + G4"] = "ACE32",
-		["lctrl + G5"] = "M416",
-		["lctrl + G6"] = "",
-		["lctrl + G7"] = "",
-		["lctrl + G8"] = "",
-		["lctrl + G9"] = "",
-		["lctrl + G10"] = "",
-		["lctrl + G11"] = "",
-		-- lshift + G
-		["lshift + G3"] = "cycle_stock",
-		["lshift + G4"] = "AUG",
-		["lshift + G5"] = "Beryl M762",
-		["lshift + G6"] = "stock_1",
-		["lshift + G7"] = "stock_2",
-		["lshift + G8"] = "stock_3",
-		["lshift + G9"] = "",
-		["lshift + G10"] = "",
-		["lshift + G11"] = "",
-		-- ralt + G
-		["ralt + G3"] = "",
-		["ralt + G4"] = "scopeX3",
-		["ralt + G5"] = "scopeX2",
-		["ralt + G6"] = "",
-		["ralt + G7"] = "",
-		["ralt + G8"] = "",
-		["ralt + G9"] = "",
-		["ralt + G10"] = "",
-		["ralt + G11"] = "",
-		-- rctrl + G
-		["rctrl + G3"] = "",
-		["rctrl + G4"] = "lock_state",
-		["rctrl + G5"] = "scopeX1",
-		["rctrl + G6"] = "cycle_muzzle",
-		["rctrl + G7"] = "cycle_grip",
-		["rctrl + G8"] = "cycle_stock",
-		["rctrl + G9"] = "",
-		["rctrl + G10"] = "",
-		["rctrl + G11"] = "",
-		-- rshift + G
-		["rshift + G3"] = "",
-		["rshift + G4"] = "",
-		["rshift + G5"] = "",
-		["rshift + G6"] = "muzzle_4",
-		["rshift + G7"] = "grip_1",
-		["rshift + G8"] = "grip_2",
-		["rshift + G9"] = "grip_3",
-		["rshift + G10"] = "grip_4",
-		["rshift + G11"] = "grip_5",
-		-- 非鼠标G键，可以使键盘或者耳机上的G键，默认使用键盘G键，请确保你使用的是可编程的罗技键盘 | F1~12 (Non-mouse G-key)
-		["F1"] = "Beryl M762|scopeX1",
-		["F2"] = "ACE32|scopeX1",
-		["F3"] = "M416|scopeX1",
-		["F4"] = "AUG|scopeX1",
-		["F5"] = "AKM|scopeX1",
-		["F6"] = "Groza|scopeX1",
-		["F7"] = "M249|scopeX1",
-		["F8"] = "P90|scopeX1",
-		["F9"] = "cycle_muzzle",
-		["F10"] = "cycle_grip",
-		["F11"] = "cycle_stock",
-		["F12"] = "",
-		-- lalt + 数字键 (alt + 1~8)
-		["lalt + 1"] = "ACE32",
-		["lalt + 2"] = "M416",
-		["lalt + 3"] = "AUG",
-		["lalt + 4"] = "SCAR-L",
-		["lalt + 5"] = "Beryl M762",
-		["lalt + 6"] = "QBZ",
-		["lalt + 7"] = "G36C",
-		["lalt + 8"] = "UMP45",
-	},
 }
 ----------------------------- [[ 以下是脚本核心代码，非专业人士请勿改动 ]] -----------------------------
 ----------------------------- [[ 以下是脚本核心代码，非专业人士请勿改动 ]] -----------------------------
@@ -1457,8 +1360,6 @@ function pubg.runStatus ()
 		return IsKeyLockOn("capslock")
 	elseif userInfo.startControl == "numlock" then
 		return IsKeyLockOn("numlock")
-	elseif userInfo.startControl == "G_bind" then
-		return pubg.isStart
 	end
 end
 
@@ -1642,73 +1543,6 @@ function pubg.fastDiscard ()
 	PressAndReleaseKey("tab")
 end
 
---[[ G key command binding ]]
-function pubg.runCmd (cmd)
-	if cmd == "" then cmd = "none" end
-	local switch = {
-		["none"] = function () end,
-		["9mm"] = pubg.setBulletType,
-		["5.56"] = pubg.setBulletType,
-		["7.62"] = pubg.setBulletType,
-		["scopeX1"] = pubg.setScope,
-		["scopeX2"] = pubg.setScope,
-		["scopeX3"] = pubg.setScope,
-		["scopeX4"] = pubg.setScope,
-		["scopeX6"] = pubg.setScope,
-		["toggle_scopeX2"] = pubg.toggleScopeX2,
-		["toggle_scopeX3"] = pubg.toggleScopeX3,
-		["UMP45"] = pubg.setGun,
-		["MP5K"] = pubg.setGun,
-		["Tommy Gun"] = pubg.setGun,
-		["P90"] = pubg.setGun,
-		["Vector"] = pubg.setGun,
-		["Micro UZI"] = pubg.setGun,
-		["M416"] = pubg.setGun,
-		["SCAR-L"] = pubg.setGun,
-		["QBZ"] = pubg.setGun,
-		["G36C"] = pubg.setGun,
-		["AUG"] = pubg.setGun,
-		["M249"] = pubg.setGun,
-		["M16A4"] = pubg.setGun,
-		["Groza"] = pubg.setGun,
-		["AKM"] = pubg.setGun,
-		["ACE32"] = pubg.setGun,
-		["Beryl M762"] = pubg.setGun,
-		["first"] = pubg.findInSeries,
-		["next"] = pubg.findInSeries,
-		["last"] = pubg.findInSeries,
-		["first_in_canUse"] = pubg.findInCanUse,
-		["next_in_canUse"] = pubg.findInCanUse,
-		["last_in_canUse"] = pubg.findInCanUse,
-		["fast_pickup"] = pubg.fastPickup,
-		["fast_discard"] = pubg.fastDiscard,
-		["fast_lick_box"] = pubg.fastLickBox,
-		["off"] = function ()
-			pubg.changeIsStart(false)
-		end,
-		["lock_state"] = pubg.toggleLockState,
-		["cycle_muzzle"] = pubg.cycleMuzzle,
-		["cycle_grip"] = pubg.cycleGrip,
-		["cycle_stock"] = pubg.cycleStock,
-	}
-
-	local cmdGroup = string.split(cmd, '|')
-
-	for i = 1, #cmdGroup do
-		local _cmd = cmdGroup[i]
-		-- 配件命令模式匹配 (muzzle_1, grip_2, stock_3)
-		if string.match(_cmd, "^muzzle_%d+$") then
-			pubg.setMuzzle(_cmd)
-		elseif string.match(_cmd, "^grip_%d+$") then
-			pubg.setGrip(_cmd)
-		elseif string.match(_cmd, "^stock_%d+$") then
-			pubg.setStock(_cmd)
-		elseif switch[_cmd] then
-			switch[_cmd](_cmd)
-		end
-	end
-end
-
 --[[ autputLog render ]]
 function pubg.outputLogRender ()
 	if userInfo.debug == 0 then return false end
@@ -1868,29 +1702,6 @@ function pubg.shooting()
     OutputLogMessage("Stop Shooting....\n")
 end
 
--- [[ processing instruction ]]
-function pubg.modifierHandle (modifier)
-	local cmd = userInfo.G_bind[modifier]
-	pubg.renderDom.combo_key = modifier -- Save combination keys
-
-	-- 检查是否在压枪模式下（大写键开启）
-	if not pubg.runStatus() then
-		OutputLogMessage("【提示】请先开启大写键(Caps Lock)进入压枪模式后再切换枪械/倍镜\n")
-		pubg.renderDom.cmd = ""
-		pubg.outputLogRender()
-		return
-	end
-
-	if (cmd) then
-		pubg.renderDom.cmd = cmd -- Save instruction name
-		pubg.runCmd(cmd) -- Execution instructions
-	else
-		pubg.renderDom.cmd = ""
-	end
-
-	pubg.outputLogRender() -- Call log rendering method to output information
-end
-
 --[[ 关闭压枪功能 ]]
 function pubg.turnOffRecoil()
 	if pubg.isStart then
@@ -1921,45 +1732,6 @@ function OnEvent (event, arg, family)
 	end
 
 	pubg.OnEvent_NoRecoil(event, arg, family)
-
-	-- Switching arsenals according to different types of ammunition
-	if event == "MOUSE_BUTTON_PRESSED" and arg >=3 and arg <= 11 and family == "mouse" then
-		local modifier = "G" .. arg
-		local list = { "lalt", "lctrl", "lshift", "ralt", "rctrl", "rshift" }
-
-		for i = 1, #list do
-			if IsModifierPressed(list[i]) then
-				modifier = list[i] .. " + " .. modifier
-				break
-			end
-		end
-
-		OutputLogMessage("[DEBUG] Mouse button pressed: G%s, modifier detected: %s\n", arg, modifier)
-		pubg.modifierHandle(modifier)
-	elseif event == "G_PRESSED" and arg >=1 and arg <= 12 then
-		-- if not pubg.runStatus() and userInfo.startControl ~= "G_bind" then return false end
-		local modifier = "F" .. arg
-
-		pubg.modifierHandle(modifier)
-	elseif event == "G_PRESSED" and arg >= 13 and arg <= 20 then
-		-- 支持数字键1-8（需在GHUB中将数字键绑定为G13-G20）
-		local numKey = arg - 12
-		local modifier = numKey .. ""
-		if IsModifierPressed("lalt") then
-			modifier = "lalt + " .. modifier
-		elseif IsModifierPressed("ralt") then
-			modifier = "ralt + " .. modifier
-		elseif IsModifierPressed("lctrl") then
-			modifier = "lctrl + " .. modifier
-		elseif IsModifierPressed("rctrl") then
-			modifier = "rctrl + " .. modifier
-		elseif IsModifierPressed("lshift") then
-			modifier = "lshift + " .. modifier
-		elseif IsModifierPressed("rshift") then
-			modifier = "rshift + " .. modifier
-		end
-		pubg.modifierHandle(modifier)
-	end
 
 	-- Script deactivated event
 	if event == "PROFILE_DEACTIVATED" then
