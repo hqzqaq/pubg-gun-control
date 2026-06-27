@@ -298,7 +298,14 @@ class GunControlApp:
         try:
             from pubg_gun_control.recognizer import GunRecognizer
             template_dir = self._recognition_config.get("template_dir") or None
-            self._recognizer = GunRecognizer(rois, template_dir)
+            thresholds = {
+                "gun": self._recognition_config.get("threshold_gun", 0.5),
+                "muzzle": self._recognition_config.get("threshold_muzzle", 0.25),
+                "grip": self._recognition_config.get("threshold_grip", 0.3),
+                "stock": self._recognition_config.get("threshold_stock", 0.35),
+                "scope": self._recognition_config.get("threshold_scope", 0.35),
+            }
+            self._recognizer = GunRecognizer(rois, template_dir, thresholds)
             if not self._recognizer.has_gun_templates():
                 logger.warning("未找到枪械模板，请先运行 python main.py --init")
                 return

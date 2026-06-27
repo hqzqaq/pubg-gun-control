@@ -50,9 +50,15 @@ TEMPLATE_DIR = Path(__file__).resolve().parent.parent.parent / "templates"
 class GunRecognizer:
     """截图识别枪械名称和配件（全部基于模板匹配）"""
 
-    def __init__(self, rois: dict[str, list[int]], template_dir: str | None = None) -> None:
+    def __init__(self, rois: dict[str, list[int]], template_dir: str | None = None,
+                 thresholds: dict[str, float] | None = None) -> None:
         self._rois = rois
         self._template_dir = Path(template_dir) if template_dir else TEMPLATE_DIR
+        self._thresholds = {
+            "gun": 0.5, "muzzle": 0.25, "grip": 0.3, "stock": 0.35, "scope": 0.35,
+        }
+        if thresholds:
+            self._thresholds.update(thresholds)
         self._gun_templates: dict[str, np.ndarray] = {}
         self._attachment_templates: dict[str, dict[str, dict[str, np.ndarray]]] = {}
         self._scope_templates: dict[str, tuple[np.ndarray, int]] = {}
@@ -224,7 +230,7 @@ class GunRecognizer:
         if "weapon_roi" in self._rois:
             roi_img = self.capture_roi(self._rois["weapon_roi"], screenshot)
             gray = cv2.cvtColor(roi_img, cv2.COLOR_BGR2GRAY) if len(roi_img.shape) == 3 else roi_img
-            name, score = self._match_template(gray, self._gun_templates, threshold=0.5)
+            name, score = self._match_template(gray, self._gun_templates, threshold=self._thresholds["gun"])
             result["gun"] = name
             result["scores"]["gun"] = round(score, 3)
 
@@ -240,8 +246,7 @@ class GunRecognizer:
                     type_templates = self._attachment_templates.get(category, {}).get(weapon_type, {})
                 else:
                     type_templates = self._attachment_templates.get(category, {}).get("_shared", {})
-                thresholds = {"muzzle": 0.25, "grip": 0.3, "stock": 0.35}
-                name, score = self._match_template(gray, type_templates, threshold=thresholds.get(category, 0.35))
+                name, score = self._match_template(gray, type_templates, threshold=self._thresholds[category])
                 result["scores"][category] = round(score, 3)
                 if name:
                     options = {"muzzle": MUZZLE_OPTIONS, "grip": GRIP_OPTIONS, "stock": STOCK_OPTIONS}[category]
@@ -261,7 +266,7 @@ class GunRecognizer:
                     best_score = mv
                     best_name = sname
             result["scores"]["scope"] = round(best_score, 3)
-            if best_name and best_score >= 0.35 and best_name in self._scope_templates:
+            if best_name and best_score >= self._thresholds["scope"] and best_name in self._scope_templates:
                 result["scope"] = self._scope_templates[best_name][1]
 
         return result

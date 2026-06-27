@@ -243,6 +243,11 @@ _DEFAULT_RECOGNITION: dict[str, Any] = {
     "hotkey": "f2",
     "rec_path": "",
     "template_dir": "",
+    "threshold_gun": 0.5,
+    "threshold_muzzle": 0.25,
+    "threshold_grip": 0.3,
+    "threshold_stock": 0.35,
+    "threshold_scope": 0.35,
 }
 
 

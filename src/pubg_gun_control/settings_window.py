@@ -83,6 +83,11 @@ class SettingsWindow:
         self.rec_enabled_var = tk.BooleanVar(value=bool(self._recognition_config.get("enabled", False)))
         self.rec_hotkey_var = tk.StringVar(value=str(self._recognition_config.get("hotkey", "f2")))
         self.rec_path_var = tk.StringVar(value=str(self._recognition_config.get("rec_path", "")))
+        self.threshold_gun_var = tk.DoubleVar(value=float(self._recognition_config.get("threshold_gun", 0.5)))
+        self.threshold_muzzle_var = tk.DoubleVar(value=float(self._recognition_config.get("threshold_muzzle", 0.25)))
+        self.threshold_grip_var = tk.DoubleVar(value=float(self._recognition_config.get("threshold_grip", 0.3)))
+        self.threshold_stock_var = tk.DoubleVar(value=float(self._recognition_config.get("threshold_stock", 0.35)))
+        self.threshold_scope_var = tk.DoubleVar(value=float(self._recognition_config.get("threshold_scope", 0.35)))
         self.voice_enabled_var = tk.BooleanVar(value=voice_enabled)
         self.voice_volume_var = tk.IntVar(value=max(0, min(100, int(voice_volume))))
         self._default_event_enabled = self._build_default_event_enabled(voice_event_enabled)
@@ -135,7 +140,7 @@ class SettingsWindow:
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(1, weight=1)
 
-        ttk.Label(frame, text="勾选枪械支持的配件，未勾选的配件在识别时自动忽略").grid(
+        ttk.Label(frame, text="点击枪械名称后，在下方勾选支持的配件").grid(
             row=0, column=0, sticky="w", pady=(0, 3)
         )
 
@@ -144,16 +149,16 @@ class SettingsWindow:
         tree_frame.columnconfigure(0, weight=1)
         tree_frame.rowconfigure(0, weight=1)
 
-        columns = ("ammo", "muzzle", "grip", "stock")
-        self._tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=12)
-        self._tree.heading("ammo", text="弹药")
+        columns = ("muzzle", "grip", "stock")
+        self._tree = ttk.Treeview(tree_frame, columns=columns, show="tree headings", height=12)
+        self._tree.heading("#0", text="枪械名称")
         self._tree.heading("muzzle", text="枪口")
         self._tree.heading("grip", text="握把")
         self._tree.heading("stock", text="枪托")
-        self._tree.column("ammo", width=50, anchor="center")
-        self._tree.column("muzzle", width=50, anchor="center")
-        self._tree.column("grip", width=50, anchor="center")
-        self._tree.column("stock", width=50, anchor="center")
+        self._tree.column("#0", width=180)
+        self._tree.column("muzzle", width=60, anchor="center")
+        self._tree.column("grip", width=60, anchor="center")
+        self._tree.column("stock", width=60, anchor="center")
 
         scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self._tree.yview)
         self._tree.configure(yscrollcommand=scrollbar.set)
@@ -161,27 +166,62 @@ class SettingsWindow:
         scrollbar.grid(row=0, column=1, sticky="ns")
 
         self._tree.bind("<<TreeviewSelect>>", self._on_tree_select)
+        self._tree.bind("<ButtonRelease-1>", self._on_tree_click)
         self._populate_tree()
+
+        btn_row = ttk.Frame(frame)
+        btn_row.grid(row=3, column=0, sticky="w", pady=(3, 0))
+        ttk.Button(btn_row, text="添加枪械", command=self._on_add_gun, width=10).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(btn_row, text="删除选中", command=self._on_delete_gun, width=10).pack(side=tk.LEFT)
+
+    _CHECK = "\u2611"  # ☑
+    _UNCHECK = "\u2610"  # ☐
 
     def _populate_tree(self) -> None:
         for item in self._tree.get_children():
             self._tree.delete(item)
 
+        ammo_labels = {"7.62": "7.62mm", "5.56": "5.56mm", ".45": ".45 ACP", "9mm": "9mm"}
+
         for ammo, guns in self._guns_by_ammo.items():
+            label = ammo_labels.get(ammo, ammo)
+            parent_id = self._tree.insert("", "end", text=label, open=True, values=("", "", ""))
             for gun in guns:
                 ga = self.gun_attachments.get(gun, {"muzzle": True, "grip": True, "stock": True})
-                m = "Y" if ga.get("muzzle", True) else "-"
-                g = "Y" if ga.get("grip", True) else "-"
-                s = "Y" if ga.get("stock", True) else "-"
-                self._tree.insert("", "end", iid=gun, values=(ammo, m, g, s))
+                m = self._CHECK if ga.get("muzzle", True) else self._UNCHECK
+                g = self._CHECK if ga.get("grip", True) else self._UNCHECK
+                s = self._CHECK if ga.get("stock", True) else self._UNCHECK
+                self._tree.insert(parent_id, "end", iid=gun, text=gun, values=(m, g, s))
 
     def _on_tree_select(self, event) -> None:
         sel = self._tree.selection()
         if not sel:
             return
         gun = sel[0]
+        if gun in self._guns_by_ammo:
+            return
         self._selected_gun = gun
         self._show_attachment_detail(gun)
+
+    def _on_tree_click(self, event) -> None:
+        """点击树形列表中的勾选框列，直接切换状态"""
+        item = self._tree.identify_row(event.y)
+        col = self._tree.identify_column(event.x)
+        if not item or item in self._guns_by_ammo:
+            return
+        col_index = {"#1": "muzzle", "#2": "grip", "#3": "stock"}.get(col)
+        if not col_index:
+            return
+        if item not in self._checkbox_vars:
+            self._checkbox_vars[item] = {}
+            ga = self.gun_attachments.get(item, {"muzzle": True, "grip": True, "stock": True})
+            for cat in _ATTACH_COLS:
+                self._checkbox_vars[item][cat] = tk.BooleanVar(value=ga.get(cat, True))
+        var = self._checkbox_vars[item][col_index]
+        var.set(not var.get())
+        self._sync_tree_display(item)
+        self._selected_gun = item
+        self._show_attachment_detail(item)
 
     def _show_attachment_detail(self, gun: str) -> None:
         if hasattr(self, "_detail_frame"):
@@ -204,11 +244,10 @@ class SettingsWindow:
         if gun not in self._checkbox_vars:
             return
         vars = self._checkbox_vars[gun]
-        m = "Y" if vars["muzzle"].get() else "-"
-        g = "Y" if vars["grip"].get() else "-"
-        s = "Y" if vars["stock"].get() else "-"
-        ammo = self._tree.set(gun, "ammo")
-        self._tree.item(gun, values=(ammo, m, g, s))
+        m = self._CHECK if vars["muzzle"].get() else self._UNCHECK
+        g = self._CHECK if vars["grip"].get() else self._UNCHECK
+        s = self._CHECK if vars["stock"].get() else self._UNCHECK
+        self._tree.item(gun, values=(m, g, s))
 
     # ---- 语音设置区 ----
 
@@ -263,6 +302,21 @@ class SettingsWindow:
             row=4, column=0, sticky="w", pady=(3, 0)
         )
 
+        thr_frame = ttk.LabelFrame(frame, text="识别阈值（0~1，越低越宽松）", padding=3)
+        thr_frame.grid(row=5, column=0, sticky="ew", pady=(5, 0))
+
+        thr_items = [
+            ("枪械", self.threshold_gun_var),
+            ("枪口", self.threshold_muzzle_var),
+            ("握把", self.threshold_grip_var),
+            ("枪托", self.threshold_stock_var),
+            ("倍镜", self.threshold_scope_var),
+        ]
+        for i, (label, var) in enumerate(thr_items):
+            ttk.Label(thr_frame, text=label, width=5).grid(row=0, column=i * 2, padx=(3, 0))
+            ttk.Spinbox(thr_frame, textvariable=var, from_=0.0, to=1.0, increment=0.05,
+                        width=5, format="%.2f").grid(row=0, column=i * 2 + 1, padx=(0, 5))
+
     # ---- 按钮区 ----
 
     def _create_buttons(self, parent: ttk.Frame, row: int) -> None:
@@ -290,6 +344,53 @@ class SettingsWindow:
         }
         self.voice_player.play(event)
 
+    def _on_add_gun(self) -> None:
+        dialog = tk.Toplevel(self.window)
+        dialog.title("添加枪械")
+        dialog.attributes("-topmost", True)
+        dialog.grab_set()
+        dialog.geometry("300x120")
+
+        ttk.Label(dialog, text="枪械名称:").pack(pady=(10, 0))
+        name_var = tk.StringVar()
+        ttk.Entry(dialog, textvariable=name_var, width=20).pack(pady=3)
+
+        ttk.Label(dialog, text="弹药类型:").pack()
+        ammo_var = tk.StringVar(value="5.56")
+        ammo_combo = ttk.Combobox(dialog, textvariable=ammo_var, values=list(self._guns_by_ammo.keys()), width=10, state="readonly")
+        ammo_combo.pack(pady=3)
+
+        def confirm():
+            name = name_var.get().strip()
+            ammo = ammo_var.get().strip()
+            if not name or not ammo:
+                return
+            if ammo not in self._guns_by_ammo:
+                self._guns_by_ammo[ammo] = []
+            if name in self._guns_by_ammo[ammo]:
+                return
+            self._guns_by_ammo[ammo].append(name)
+            self.gun_attachments[name] = {"muzzle": True, "grip": True, "stock": True}
+            self._populate_tree()
+            dialog.destroy()
+
+        ttk.Button(dialog, text="确定", command=confirm).pack(pady=5)
+
+    def _on_delete_gun(self) -> None:
+        sel = self._tree.selection()
+        if not sel:
+            return
+        gun = sel[0]
+        if gun in self._guns_by_ammo:
+            return
+        for ammo, guns in self._guns_by_ammo.items():
+            if gun in guns:
+                guns.remove(gun)
+                break
+        self.gun_attachments.pop(gun, None)
+        self._checkbox_vars.pop(gun, None)
+        self._populate_tree()
+
     def _on_save(self) -> None:
         new_gun_attachments: dict[str, dict[str, bool]] = {}
         for ammo, guns in self._guns_by_ammo.items():
@@ -313,6 +414,11 @@ class SettingsWindow:
                 "enabled": self.rec_enabled_var.get(),
                 "hotkey": self.rec_hotkey_var.get().strip() or "f2",
                 "rec_path": self.rec_path_var.get().strip(),
+                "threshold_gun": round(self.threshold_gun_var.get(), 2),
+                "threshold_muzzle": round(self.threshold_muzzle_var.get(), 2),
+                "threshold_grip": round(self.threshold_grip_var.get(), 2),
+                "threshold_stock": round(self.threshold_stock_var.get(), 2),
+                "threshold_scope": round(self.threshold_scope_var.get(), 2),
             }
             self.on_recognition_save(rec_cfg)
         self.window.destroy()
