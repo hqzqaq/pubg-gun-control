@@ -10,6 +10,7 @@ GHUB Lua 脚本生成器
 
 import logging
 import os
+import re
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -215,21 +216,25 @@ def generate_dofile_files(
     config_lines.append("-- 路径: " + config_output)
     config_lines.append("")
 
-    # 找到 attachmentConfig 开始到 userInfo 结束
-    in_data_block = False
-    data_depth = 0
-    for line in source.splitlines(keepends=True):
-        stripped = line.strip()
-        if not in_data_block:
-            if stripped.startswith("attachmentConfig"):
-                in_data_block = True
-                data_depth = 0
-        if in_data_block:
-            config_lines.append(line.rstrip("\n"))
-            data_depth += line.count("{") - line.count("}")
-            if data_depth <= 0 and "{" in stripped:
-                in_data_block = False
-                config_lines.append("")
+    # 依次提取 attachmentConfig、gunNoStock、userInfo 三个数据块
+    # 每个块独立提取：遇到块开始 → 跟踪 {/} 深度 → depth 归零即块结束
+    # 不能用单循环 + depth<=0 停止，否则只会提取第一个块（attachmentConfig）
+    # 也不能用 depth<=0 and "{" in stripped 停止，那样会把后续 pubg 表和函数都吞进来
+    for block_name in ("attachmentConfig", "gunNoStock", "userInfo"):
+        in_block = False
+        depth = 0
+        for line in source.splitlines(keepends=True):
+            stripped = line.strip()
+            if not in_block:
+                if stripped.startswith(block_name):
+                    in_block = True
+                    depth = 0
+            if in_block:
+                config_lines.append(line.rstrip("\n"))
+                depth += line.count("{") - line.count("}")
+                if depth <= 0:
+                    config_lines.append("")
+                    break
 
     # 找到所有 pubg["GunName"] 弹道函数
     in_gun_func = False
@@ -275,9 +280,17 @@ def generate_dofile_files(
     wrapper_lines.append("rec_scope = 1")
     wrapper_lines.append("")
 
+    # userInfo 默认值（dofile 加载配置前供 pubg 表定义使用，加载后被覆盖）
+    wrapper_lines.append("userInfo = {")
+    wrapper_lines.append("\tcpuLoad = 2,")
+    wrapper_lines.append("\tsensitivity = { ADS = 70, Aim = 0.55, scopeX2 = 1.4, scopeX3 = 3.6, scopeX4 = 3.0, scopeX6 = 1.25 },")
+    wrapper_lines.append("}")
+    wrapper_lines.append("")
+
     # 提取 pubg = { 表定义（到 pubg.xLengthForDebug 之前）
     in_pubg_table = False
     pubg_depth = 0
+    user_info_fields = []  # 记录 pubg 表中引用 userInfo 的字段（供 loadConfig 刷新）
     for line in source.splitlines(keepends=True):
         stripped = line.strip()
         if stripped.startswith("pubg = {"):
@@ -286,7 +299,9 @@ def generate_dofile_files(
         if in_pubg_table:
             wrapper_lines.append(line.rstrip("\n"))
             pubg_depth += line.count("{") - line.count("}")
-            if pubg_depth <= 0 and "{" in stripped:
+            if "userInfo" in stripped:
+                user_info_fields.append(stripped)
+            if pubg_depth <= 0:
                 in_pubg_table = False
                 break
 
@@ -308,6 +323,16 @@ def generate_dofile_files(
     wrapper_lines.append("    local ok, err = pcall(function() dofile(CONFIG_PATH) end)")
     wrapper_lines.append("    if ok then")
     wrapper_lines.append("        _configLoaded = true")
+    # dofile 后 userInfo 已被配置文件覆盖，刷新 pubg 表中引用 userInfo 的字段
+    for field_line in user_info_fields:
+        code_part = field_line.split("--")[0].strip()
+        if code_part.endswith(","):
+            code_part = code_part[:-1].strip()
+        m = re.match(r"(\w+)\s*=\s*(.+)$", code_part)
+        if m:
+            field_name = m.group(1)
+            field_expr = m.group(2).strip()
+            wrapper_lines.append(f"        pubg.{field_name} = {field_expr}")
     wrapper_lines.append("        pubg.init()")
     wrapper_lines.append('        OutputLogMessage("[CONFIG] 配置已加载\\n")')
     wrapper_lines.append("    else")
