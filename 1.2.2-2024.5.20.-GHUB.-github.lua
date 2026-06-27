@@ -104,7 +104,6 @@ userInfo = {
 			{ "AKM",            1,          1.95,		0.74,		1.38,		1.25,		2.12,		0.50,		1.15,		0.75},
 			{ "Groza",          1,          1.60,		0.70,		1.38,		1.25,		2.10,		0.50,		1.15,		0.75},
 			{ "ACE32",          1,          9.30,		0.80,		1.50,		1.25,		2.40,		0.00,		1.20,		0.75},
-			{ "DP-28",          0,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50,		1.10,		0.75},
 			{ "MK47",           2,          1.00,		0.80,		1.38,		1.25,		2.60,		0.50,		1.10,		0.75},
 		},
 		["5.56"] = {
@@ -805,20 +804,6 @@ pubg["QBZ"] = function (gunName)
 			{15, 32},
 			{20, 34},
 			{42, 36},
-		}
-	})
-
-end
-
-pubg["DP-28"] = function (gunName)
-
-	return pubg.execOptions(gunName, {
-		interval = 100,
-		ballistic = {
-			{1, 0},
-			{2, 30},
-			{5, 20},
-			{47, 30},
 		}
 	})
 
@@ -1689,7 +1674,6 @@ function pubg.runCmd (cmd)
 		["AKM"] = pubg.setGun,
 		["ACE32"] = pubg.setGun,
 		["Beryl M762"] = pubg.setGun,
-		["DP-28"] = pubg.setGun,
 		["first"] = pubg.findInSeries,
 		["next"] = pubg.findInSeries,
 		["last"] = pubg.findInSeries,
