@@ -214,6 +214,80 @@ class GunControlApp:
             return
         self._run_template_capture(rois)
 
+    def _on_ballistic_analysis(self) -> None:
+        """托盘菜单：弹道分析"""
+        threading.Thread(target=self._run_ballistic_analysis, daemon=True).start()
+
+    def _run_ballistic_analysis(self) -> None:
+        import tkinter as tk
+        from tkinter import filedialog, messagebox, ttk
+        from pubg_gun_control.ballistic_analyzer import analyze_spray_image, format_lua_function
+        from pubg_gun_control.lua_parser import LuaBallisticParser, GunCoefficients
+
+        root = tk.Tk()
+        root.title("弹道分析")
+        root.attributes("-topmost", True)
+        root.grab_set()
+        root.geometry("400x250")
+
+        ttk.Label(root, text="从弹孔截图自动提取弹道数据", font=("Arial", 11, "bold")).pack(pady=(10, 5))
+
+        file_frame = ttk.Frame(root)
+        file_frame.pack(fill=tk.X, padx=10, pady=3)
+        self._analysis_file_var = tk.StringVar()
+        ttk.Label(file_frame, text="弹孔截图:").pack(side=tk.LEFT)
+        ttk.Entry(file_frame, textvariable=self._analysis_file_var, width=30).pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        ttk.Button(file_frame, text="选择", width=5, command=lambda: self._analysis_file_var.set(
+            filedialog.askopenfilename(filetypes=[("图片", "*.png *.jpg *.jpeg *.bmp")]) or self._analysis_file_var.get()
+        )).pack(side=tk.LEFT)
+
+        name_frame = ttk.Frame(root)
+        name_frame.pack(fill=tk.X, padx=10, pady=3)
+        ttk.Label(name_frame, text="枪械名称:").pack(side=tk.LEFT)
+        self._analysis_gun_var = tk.StringVar(value="M416")
+        ttk.Entry(name_frame, textvariable=self._analysis_gun_var, width=20).pack(side=tk.LEFT, padx=5)
+
+        param_frame = ttk.Frame(root)
+        param_frame.pack(fill=tk.X, padx=10, pady=3)
+        ttk.Label(param_frame, text="射击间隔(ms):").pack(side=tk.LEFT)
+        self._analysis_interval_var = tk.IntVar(value=87)
+        ttk.Spinbox(param_frame, textvariable=self._analysis_interval_var, from_=10, to=500, width=8).pack(side=tk.LEFT, padx=5)
+        ttk.Label(param_frame, text="缩放系数:").pack(side=tk.LEFT, padx=(10, 0))
+        self._analysis_scale_var = tk.DoubleVar(value=0.7)
+        ttk.Spinbox(param_frame, textvariable=self._analysis_scale_var, from_=0.1, to=2.0, increment=0.1, width=6, format="%.1f").pack(side=tk.LEFT, padx=5)
+
+        result_label = ttk.Label(root, text="", foreground="green", wraplength=380)
+        result_label.pack(pady=5)
+
+        def on_analyze():
+            path = self._analysis_file_var.get().strip()
+            gun = self._analysis_gun_var.get().strip()
+            interval = self._analysis_interval_var.get()
+            scale = self._analysis_scale_var.get()
+            if not path or not gun:
+                result_label.config(text="请选择图片并输入枪械名称", foreground="red")
+                return
+            result = analyze_spray_image(path, scale=scale)
+            if not result:
+                result_label.config(text="分析失败：未检测到足够的弹孔", foreground="red")
+                return
+            lua_code = format_lua_function(gun, result["ballistic"], interval)
+            result_label.config(text=f"识别到 {result['shot_count']} 个弹孔，生成 {len(result['ballistic'])} 段弹道", foreground="green")
+
+            save_path = filedialog.asksaveasfilename(
+                title="保存弹道数据",
+                defaultextension=".lua",
+                filetypes=[("Lua脚本", "*.lua")],
+                initialfile=f"{gun}_ballistic.lua",
+            )
+            if save_path:
+                with open(save_path, "w", encoding="utf-8") as f:
+                    f.write(lua_code)
+                messagebox.showinfo("保存成功", f"弹道数据已保存到:\n{save_path}\\n\n请在编辑器中将此函数合并到 Lua 脚本中")
+
+        ttk.Button(root, text="分析弹道", command=on_analyze, width=12).pack(pady=10)
+        root.mainloop()
+
     def _on_settings_saved(
         self,
         shortcuts: list[dict[str, str]],
@@ -277,6 +351,7 @@ class GunControlApp:
             self._on_exit, self._on_settings, self._on_open_editor,
             on_init_roi=self._on_init_roi,
             on_capture_templates=self._on_capture_templates,
+            on_ballistic_analysis=self._on_ballistic_analysis,
         )
         self.tray_icon.start()
 

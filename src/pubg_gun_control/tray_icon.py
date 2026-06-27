@@ -27,12 +27,14 @@ class TrayIcon:
         on_open_editor: Callable[[], None] | None = None,
         on_init_roi: Callable[[], None] | None = None,
         on_capture_templates: Callable[[], None] | None = None,
+        on_ballistic_analysis: Callable[[], None] | None = None,
     ) -> None:
         self.on_exit = on_exit
         self.on_settings = on_settings
         self.on_open_editor = on_open_editor
         self.on_init_roi = on_init_roi
         self.on_capture_templates = on_capture_templates
+        self.on_ballistic_analysis = on_ballistic_analysis
         self.icon: pystray.Icon | None = None
         self._running = False
 
@@ -71,6 +73,10 @@ class TrayIcon:
         if self.on_capture_templates:
             self.on_capture_templates()
 
+    def _on_ballistic_analysis_clicked(self, icon: pystray.Icon) -> None:
+        if self.on_ballistic_analysis:
+            self.on_ballistic_analysis()
+
     def start(self) -> None:
         menu_items: list = [
             pystray.MenuItem("设置", self._on_settings_clicked),
@@ -81,6 +87,7 @@ class TrayIcon:
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("重新框选ROI区域", self._on_init_roi_clicked),
             pystray.MenuItem("重新采集模板", self._on_capture_templates_clicked),
+            pystray.MenuItem("弹道分析", self._on_ballistic_analysis_clicked),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("退出", self._on_exit_clicked),
         ])
