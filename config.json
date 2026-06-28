@@ -52,38 +52,150 @@
     }
   ],
   "gun_attachments": {
-    "UMP5": {
+    "Beryl M762": {
       "muzzle": true,
       "grip": true,
       "stock": false
     },
-    "MP5k": {
+    "AKM": {
       "muzzle": true,
-      "grip": true,
-      "stock": true
+      "grip": false,
+      "stock": false
     },
-    "M416": {
+    "Groza": {
       "muzzle": true,
-      "grip": true,
-      "stock": true
+      "grip": false,
+      "stock": false
     },
     "ACE32": {
       "muzzle": true,
       "grip": true,
       "stock": true
     },
-    "Beryl M762": {
+    "MK47": {
       "muzzle": true,
       "grip": true,
-      "stock": false
+      "stock": true
     },
     "AUG": {
       "muzzle": true,
       "grip": true,
       "stock": false
+    },
+    "M416": {
+      "muzzle": true,
+      "grip": true,
+      "stock": true
+    },
+    "P90": {
+      "muzzle": false,
+      "grip": false,
+      "stock": false
+    },
+    "M249": {
+      "muzzle": false,
+      "grip": false,
+      "stock": true
+    },
+    "M16A4": {
+      "muzzle": true,
+      "grip": false,
+      "stock": true
+    },
+    "SCAR-L": {
+      "muzzle": true,
+      "grip": true,
+      "stock": false
+    },
+    "QBZ": {
+      "muzzle": true,
+      "grip": true,
+      "stock": false
+    },
+    "G36C": {
+      "muzzle": true,
+      "grip": true,
+      "stock": false
+    },
+    "Tommy Gun": {
+      "muzzle": false,
+      "grip": false,
+      "stock": false
+    },
+    "Vector": {
+      "muzzle": true,
+      "grip": true,
+      "stock": true
+    },
+    "Micro UZI": {
+      "muzzle": true,
+      "grip": false,
+      "stock": true
+    },
+    "UMP45": {
+      "muzzle": true,
+      "grip": true,
+      "stock": false
+    },
+    "MP5K": {
+      "muzzle": true,
+      "grip": true,
+      "stock": true
     }
   },
+  "voice_enabled": true,
+  "voice_volume": 100,
+  "voice_event_enabled": {
+    "recoil_on": true,
+    "recoil_off": true,
+    "lock_on": true,
+    "lock_off": true,
+    "locked_action": true
+  },
+  "recognition": {
+    "enabled": true,
+    "weapon_roi": [
+      1818,
+      420,
+      2117,
+      470
+    ],
+    "muzzle_roi": [
+      1777,
+      612,
+      1843,
+      683
+    ],
+    "grip_roi": [
+      1913,
+      615,
+      1980,
+      682
+    ],
+    "stock_roi": [
+      2343,
+      613,
+      2407,
+      681
+    ],
+    "scope_roi": [
+      2138,
+      452,
+      2207,
+      520
+    ],
+    "hotkey": "f2",
+    "rec_path": "",
+    "template_dir": "",
+    "threshold_gun": 0.5,
+    "threshold_muzzle": 0.25,
+    "threshold_grip": 0.3,
+    "threshold_stock": 0.35,
+    "threshold_scope": 0.2
+  },
   "editor": {
-    "recent_files": []
+    "recent_files": [
+      "D:\\develop\\python\\pubg-gun-control\\pubg_config.lua"
+    ]
   }
 }

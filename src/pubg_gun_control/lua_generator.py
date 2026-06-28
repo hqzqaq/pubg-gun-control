@@ -174,6 +174,78 @@ def generate_auto_recognize_script(
 # dofile 模式：包装脚本 + 配置文件分离
 # ---------------------------------------------------------------------------
 
+def generate_config_only(
+    source_path: str,
+    config_output: str | None = None,
+) -> str:
+    """只生成纯数据的配置文件（attachmentConfig/gunNoStock/userInfo/枪械弹道函数）
+
+    不包含 OnEvent、pubg.init 等执行逻辑，专供 dofile 模式使用。
+    被 generate_dofile_files 和编辑器保存（main_window._on_save_lua）复用。
+
+    Args:
+        source_path: 原始基础脚本路径
+        config_output: 配置文件输出路径
+
+    Returns:
+        配置文件路径
+    """
+    project_dir = Path(__file__).resolve().parent.parent.parent
+    if config_output is None:
+        config_output = str(project_dir / "pubg_config.lua")
+
+    with open(source_path, "r", encoding="utf-8") as f:
+        source = f.read()
+
+    config_lines: list[str] = []
+    config_lines.append("-- 此文件由编辑器自动生成，请勿手动编辑")
+    config_lines.append("-- 路径: " + config_output)
+    config_lines.append("")
+
+    # 依次提取 attachmentConfig、gunNoStock、userInfo 三个数据块
+    # 每个块独立提取：遇到块开始 → 跟踪 {/} 深度 → depth 归零即块结束
+    # 不能用单循环 + depth<=0 停止，否则只会提取第一个块（attachmentConfig）
+    # 也不能用 depth<=0 and "{" in stripped 停止，那样会把后续 pubg 表和函数都吞进来
+    for block_name in ("attachmentConfig", "gunNoStock", "userInfo"):
+        in_block = False
+        depth = 0
+        for line in source.splitlines(keepends=True):
+            stripped = line.strip()
+            if not in_block:
+                if stripped.startswith(block_name):
+                    in_block = True
+                    depth = 0
+            if in_block:
+                config_lines.append(line.rstrip("\n"))
+                depth += line.count("{") - line.count("}")
+                if depth <= 0:
+                    config_lines.append("")
+                    break
+
+    # 找到所有 pubg["GunName"] 弹道函数
+    # 只跟踪 function/end 深度（不跟踪 {/}），否则 { 和 } 不配对会导致 depth 永不归零
+    in_gun_func = False
+    gun_depth = 0
+    for line in source.splitlines(keepends=True):
+        stripped = line.strip()
+        if not in_gun_func:
+            if stripped.startswith('pubg["') and "function" in stripped:
+                in_gun_func = True
+                gun_depth = 0
+        if in_gun_func:
+            config_lines.append(line.rstrip("\n"))
+            gun_depth += line.count("function")
+            gun_depth -= line.count("end")
+            if in_gun_func and stripped == "end" and gun_depth <= 0:
+                in_gun_func = False
+                config_lines.append("")
+
+    with open(config_output, "w", encoding="utf-8") as f:
+        f.write("\n".join(config_lines))
+    logger.info("已生成配置文件: %s", config_output)
+    return config_output
+
+
 def generate_dofile_files(
     source_path: str,
     config_output: str | None = None,
@@ -205,57 +277,11 @@ def generate_dofile_files(
     effective_rec = (rec_path or DEFAULT_REC_PATH).replace("\\", "\\\\")
     effective_config = config_output.replace("\\", "\\\\")
 
+    # --- 生成配置文件（纯数据，无函数定义/初始化代码）---
+    generate_config_only(source_path, config_output)
+
     with open(source_path, "r", encoding="utf-8") as f:
         source = f.read()
-
-    # --- 生成配置文件（只保留数据部分）---
-    # 提取 attachmentConfig 到 userInfo 结束（包含 canUse、G_bind 等数据）
-    # 以及所有 pubg["GunName"] 弹道函数
-    config_lines = []
-    config_lines.append("-- 此文件由编辑器自动生成，请勿手动编辑")
-    config_lines.append("-- 路径: " + config_output)
-    config_lines.append("")
-
-    # 依次提取 attachmentConfig、gunNoStock、userInfo 三个数据块
-    # 每个块独立提取：遇到块开始 → 跟踪 {/} 深度 → depth 归零即块结束
-    # 不能用单循环 + depth<=0 停止，否则只会提取第一个块（attachmentConfig）
-    # 也不能用 depth<=0 and "{" in stripped 停止，那样会把后续 pubg 表和函数都吞进来
-    for block_name in ("attachmentConfig", "gunNoStock", "userInfo"):
-        in_block = False
-        depth = 0
-        for line in source.splitlines(keepends=True):
-            stripped = line.strip()
-            if not in_block:
-                if stripped.startswith(block_name):
-                    in_block = True
-                    depth = 0
-            if in_block:
-                config_lines.append(line.rstrip("\n"))
-                depth += line.count("{") - line.count("}")
-                if depth <= 0:
-                    config_lines.append("")
-                    break
-
-    # 找到所有 pubg["GunName"] 弹道函数
-    in_gun_func = False
-    gun_depth = 0
-    for line in source.splitlines(keepends=True):
-        stripped = line.strip()
-        if not in_gun_func:
-            if stripped.startswith('pubg["') and "function" in stripped:
-                in_gun_func = True
-                gun_depth = 0
-        if in_gun_func:
-            config_lines.append(line.rstrip("\n"))
-            gun_depth += line.count("function") + line.count("{")
-            gun_depth -= line.count("end")
-            if in_gun_func and stripped == "end" and gun_depth <= 0:
-                in_gun_func = False
-                config_lines.append("")
-
-    with open(config_output, "w", encoding="utf-8") as f:
-        f.write("\n".join(config_lines))
-    logger.info("已生成配置文件: %s", config_output)
 
     # --- 生成包装脚本（函数 + OnEvent + dofile逻辑）---
     # 包含：pubg表定义、所有pubg.*函数、OnEvent、初始化逻辑
@@ -318,9 +344,33 @@ def generate_dofile_files(
 
     # 添加 dofile 相关函数
     wrapper_lines.append("")
+    wrapper_lines.append("-- 通用 Lua 文件加载函数（绕过 GHub dofile 运行时缓存）")
+    wrapper_lines.append("-- GHub 的 dofile 在脚本启动时内联文件内容，运行时调用不会重新读磁盘")
+    wrapper_lines.append("-- 改用 io.open + loadstring 每次都从磁盘读取最新内容")
+    wrapper_lines.append("function loadLuaFile(path)")
+    wrapper_lines.append("    if io and io.open then")
+    wrapper_lines.append("        local f = io.open(path, 'r')")
+    wrapper_lines.append("        if f then")
+    wrapper_lines.append("            local content = f:read('*a')")
+    wrapper_lines.append("            f:close()")
+    wrapper_lines.append("            local chunk, lerr = loadstring(content)")
+    wrapper_lines.append("            if chunk then")
+    wrapper_lines.append("                return pcall(chunk)")
+    wrapper_lines.append("            else")
+    wrapper_lines.append("                return false, 'loadstring 失败: ' .. tostring(lerr)")
+    wrapper_lines.append("            end")
+    wrapper_lines.append("        else")
+    wrapper_lines.append("            return false, 'io.open 失败: ' .. path")
+    wrapper_lines.append("        end")
+    wrapper_lines.append("    else")
+    wrapper_lines.append("        if package and package.loaded then package.loaded[path] = nil end")
+    wrapper_lines.append("        return pcall(function() dofile(path) end)")
+    wrapper_lines.append("    end")
+    wrapper_lines.append("end")
+    wrapper_lines.append("")
     wrapper_lines.append("-- dofile 加载函数")
     wrapper_lines.append("function loadConfig()")
-    wrapper_lines.append("    local ok, err = pcall(function() dofile(CONFIG_PATH) end)")
+    wrapper_lines.append("    local ok, err = loadLuaFile(CONFIG_PATH)")
     wrapper_lines.append("    if ok then")
     wrapper_lines.append("        _configLoaded = true")
     # dofile 后 userInfo 已被配置文件覆盖，刷新 pubg 表中引用 userInfo 的字段
@@ -342,15 +392,22 @@ def generate_dofile_files(
     wrapper_lines.append("end")
     wrapper_lines.append("")
     wrapper_lines.append("function loadRecResult()")
-    wrapper_lines.append("    local ok, err = pcall(function() dofile(REC_PATH) end)")
-    wrapper_lines.append("    if not ok then")
+    wrapper_lines.append("    local before = tostring(rec_gun)")
+    wrapper_lines.append("    local ok, err = loadLuaFile(REC_PATH)")
+    wrapper_lines.append("    if ok then")
+    wrapper_lines.append('        OutputLogMessage("[AUTO] 读取识别结果: %s -> %s (muzzle=%d grip=%d stock=%d scope=%d)\\n", before, tostring(rec_gun), rec_muzzle, rec_grip, rec_stock, rec_scope)')
+    wrapper_lines.append("    else")
     wrapper_lines.append('        OutputLogMessage("[AUTO] 读取识别结果失败: %s\\n", tostring(err))')
     wrapper_lines.append("    end")
     wrapper_lines.append("    return ok")
     wrapper_lines.append("end")
     wrapper_lines.append("")
     wrapper_lines.append("function applyRecResult()")
-    wrapper_lines.append("    if pubg.stateLocked then return end")
+    wrapper_lines.append("    if pubg.stateLocked then")
+    wrapper_lines.append('        OutputLogMessage("[AUTO] 状态已锁定，跳过应用\\n")')
+    wrapper_lines.append("        return")
+    wrapper_lines.append("    end")
+    wrapper_lines.append('    OutputLogMessage("[AUTO] 应用识别结果: 当前=%s 目标=%s\\n", tostring(pubg.getCurrentGunName()), tostring(rec_gun))')
     wrapper_lines.append("    if rec_gun ~= \"\" and rec_gun ~= pubg.getCurrentGunName() then")
     wrapper_lines.append("        if pubg[rec_gun] then")
     wrapper_lines.append("            pubg.setGun(rec_gun)")
@@ -385,6 +442,7 @@ def generate_dofile_files(
     wrapper_lines.append("function OnEvent(event, arg, family)")
     wrapper_lines.append("    local capsOn = IsKeyLockOn(\"capslock\")")
     wrapper_lines.append("    if capsOn and not _capsWasOn then")
+    wrapper_lines.append('        OutputLogMessage("[AUTO] CapsLock 上升沿: 加载配置+识别结果\\n")')
     wrapper_lines.append("        loadConfig()")
     wrapper_lines.append("        if AUTO_RECOGNIZE then")
     wrapper_lines.append("            if loadRecResult() then")

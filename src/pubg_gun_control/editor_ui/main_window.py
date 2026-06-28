@@ -205,10 +205,23 @@ class BallisticEditorWindow(QMainWindow):
 
         config_path = Path(__file__).resolve().parent.parent.parent.parent / "pubg_config.lua"
         try:
+            # 如果 pubg_config.lua 不存在或被污染（含 OnEvent 等执行逻辑），先重新生成纯数据版本
+            # 否则 serialize 只替换三段数据块，会保留多余的函数定义和初始化代码
+            need_regen = False
+            if not config_path.exists():
+                need_regen = True
+            else:
+                existing = config_path.read_text(encoding="utf-8")
+                if "function OnEvent" in existing or "\npubg.init()" in existing:
+                    need_regen = True
+            if need_regen:
+                from pubg_gun_control.lua_generator import generate_config_only
+                source = str(config_path.parent / "1.2.2-2024.5.20.-GHUB.-github.lua")
+                generate_config_only(source, config_output=str(config_path))
             self._parser.serialize(self._config, str(config_path), backup=False)
             config_msg = f"\n\ndofile配置已同步: {config_path}"
-        except Exception:
-            config_msg = ""
+        except Exception as exc:
+            config_msg = f"\n\ndofile配置同步失败: {exc}"
 
         QMessageBox.information(
             self,

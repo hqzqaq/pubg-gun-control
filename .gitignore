@@ -9,3 +9,13 @@ wheels/
 # Virtual environments
 .venv
 .idea
+
+# Editor / tool configs
+.mimocode/
+.trae/
+
+# Generated Lua files
+pubg_config.lua
+pubg_rec.lua
+src/pubg_gun_control/generated/
+back.lua
