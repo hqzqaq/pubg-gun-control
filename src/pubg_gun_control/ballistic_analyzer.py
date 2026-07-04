@@ -127,27 +127,56 @@ def extract_green_points(img):
 def _extract_gray_holes(img):
     """提取灰色/黑色弹孔（对墙射击的真实弹痕）
 
-    策略：在灰度图上找暗色区域（弹孔比周围墙面暗）
+    策略：先定位弹道垂直条带，再在条带内用阈值分割找弹孔
     """
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     h, w = gray.shape
 
     blurred = cv2.GaussianBlur(gray, (5, 5), 1.0)
 
-    # 自适应阈值：用OTSU自动确定最佳阈值
-    _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    # 第一步：用全局阈值找所有暗色像素，投影到 x 轴找到弹道中心
+    _, binary_global = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    x_projection = binary_global.sum(axis=0)
 
-    # 形态学操作：去噪 + 闭合
-    kernel = np.ones((2, 2), np.uint8)
-    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
-    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+    # 找到暗色像素最集中的 x 区域（弹道所在列）
+    window = max(10, w // 8)
+    best_x, best_sum = 0, 0
+    for x in range(w):
+        x_start = max(0, x - window // 2)
+        x_end = min(w, x + window // 2)
+        s = x_projection[x_start:x_end].sum()
+        if s > best_sum:
+            best_sum = s
+            best_x = x
 
-    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # 弹道条带范围
+    strip_half = max(60, window)
+    strip_x0 = max(0, best_x - strip_half)
+    strip_x1 = min(w, best_x + strip_half)
+
+    # 第二步：在弹道条带内用较低阈值分割
+    strip = blurred[:, strip_x0:strip_x1]
+
+    # 使用条带内较暗的像素百分位数作为阈值
+    strip_sorted = np.sort(strip.flatten())
+    thresh_idx = int(len(strip_sorted) * 0.35)
+    thresh_val = max(30, strip_sorted[thresh_idx])
+
+    _, binary_strip = cv2.threshold(strip, thresh_val, 255, cv2.THRESH_BINARY_INV)
+
+    # 形态学操作：闭合弹孔内部空洞
+    kernel = np.ones((3, 3), np.uint8)
+    binary_strip = cv2.morphologyEx(binary_strip, cv2.MORPH_CLOSE, kernel)
+    binary_strip = cv2.morphologyEx(binary_strip, cv2.MORPH_OPEN, kernel)
+
+    # 找轮廓
+    contours, _ = cv2.findContours(binary_strip, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # 弹孔面积范围
+    min_area = 10
+    max_area = 600
 
     points = []
-    min_area = max(3, (h * w) // 100000)
-    max_area = (h * w) // 20
-
     for cnt in contours:
         area = cv2.contourArea(cnt)
         if area < min_area or area > max_area:
@@ -160,9 +189,15 @@ def _extract_gray_holes(img):
             continue
         M = cv2.moments(cnt)
         if M["m00"] != 0:
-            cx = int(M["m10"] / M["m00"])
+            cx = int(M["m10"] / M["m00"]) + strip_x0
             cy = int(M["m01"] / M["m00"])
             points.append((cx, cy))
+
+    # 第三步：过滤掉离弹道中心线太远的点
+    if points:
+        avg_x = np.mean([p[0] for p in points])
+        max_deviation = max(50, w * 0.2)
+        points = [p for p in points if abs(p[0] - avg_x) < max_deviation]
 
     points.sort(key=lambda p: p[1], reverse=True)
     return points

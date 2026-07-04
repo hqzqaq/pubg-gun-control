@@ -11,11 +11,19 @@ rec.lua 写入模块
 
 import logging
 import os
+import sys
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_REC_PATH = str(Path(__file__).resolve().parent.parent.parent / "pubg_rec.lua")
+
+def _get_project_root() -> Path:
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS)
+    return Path(__file__).resolve().parent.parent.parent
+
+
+_DEFAULT_REC_PATH = str(_get_project_root() / "pubg_rec.lua")
 
 
 class RecLuaWriter:

@@ -9,6 +9,7 @@
 """
 
 import logging
+import sys
 import tkinter as tk
 from pathlib import Path
 from tkinter import ttk
@@ -17,6 +18,12 @@ from typing import Callable
 from pubg_gun_control.voice_prompt import VoicePlayer
 
 logger = logging.getLogger(__name__)
+
+
+def _get_project_root() -> Path:
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS)
+    return Path(__file__).resolve().parent.parent.parent
 
 _VOICE_EVENT_LABELS: dict[str, str] = {
     "recoil_on": "压枪开启",
@@ -33,7 +40,7 @@ _AMMO_LABELS = {"7.62": "7.62mm", "5.56": "5.56mm", "9mm": "9mm"}
 
 def _load_guns_from_lua() -> dict[str, list[str]]:
     from pubg_gun_control.lua_parser import LuaBallisticParser
-    lua_path = str(Path(__file__).resolve().parent.parent.parent / "1.2.2-2024.5.20.-GHUB.-github.lua")
+    lua_path = str(_get_project_root() / "1.2.2-2024.5.20.-GHUB.-github.lua")
     try:
         parser = LuaBallisticParser()
         config = parser.parse(lua_path)
@@ -47,7 +54,7 @@ def _load_guns_from_lua() -> dict[str, list[str]]:
     except Exception:
         logger.warning("无法解析 Lua 脚本，使用默认枪械列表")
         return {
-            "7.62": ["Beryl M762", "AKM", "Groza", "ACE32", "DP-28", "MK47"],
+            "7.62": ["Beryl M762", "AKM", "Groza", "ACE32", "MK47"],
             "5.56": ["AUG", "M416", "P90", "M249", "M16A4", "SCAR-L", "QBZ", "G36C"],
             "9mm": ["Tommy Gun", "Vector", "Micro UZI", "UMP45", "MP5K"],
         }
@@ -84,6 +91,7 @@ class SettingsWindow:
         self.rec_enabled_var = tk.BooleanVar(value=bool(self._recognition_config.get("enabled", False)))
         self.rec_hotkey_var = tk.StringVar(value=str(self._recognition_config.get("hotkey", "f2")))
         self.rec_path_var = tk.StringVar(value=str(self._recognition_config.get("rec_path", "")))
+        self.rec_template_dir_var = tk.StringVar(value=str(self._recognition_config.get("template_dir", "")))
         self.threshold_gun_var = tk.DoubleVar(value=float(self._recognition_config.get("threshold_gun", 0.5)))
         self.threshold_muzzle_var = tk.DoubleVar(value=float(self._recognition_config.get("threshold_muzzle", 0.25)))
         self.threshold_grip_var = tk.DoubleVar(value=float(self._recognition_config.get("threshold_grip", 0.3)))
@@ -315,15 +323,23 @@ class SettingsWindow:
         ttk.Label(frame, text="留空使用默认路径（程序目录下pubg_rec.lua）",
                   font=("Arial", 8), foreground="gray").grid(row=3, column=0, sticky="w")
 
+        tpl_frame = ttk.Frame(frame)
+        tpl_frame.grid(row=4, column=0, sticky="ew", pady=2)
+        ttk.Label(tpl_frame, text="模板目录").pack(side=tk.LEFT)
+        ttk.Entry(tpl_frame, textvariable=self.rec_template_dir_var, width=35).pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+
+        ttk.Label(frame, text="留空使用默认路径（exe目录下templates/）",
+                  font=("Arial", 8), foreground="gray").grid(row=5, column=0, sticky="w")
+
         ttk.Button(frame, text="导出GHUB脚本", command=self._on_export_lua).grid(
-            row=4, column=0, sticky="w", pady=(3, 0)
+            row=6, column=0, sticky="w", pady=(3, 0)
         )
         ttk.Button(frame, text="导出dofile脚本（编辑器保存自动生效）", command=self._on_export_dofile).grid(
-            row=4, column=1, columnspan=2, sticky="w", pady=(3, 0), padx=(10, 0)
+            row=6, column=1, columnspan=2, sticky="w", pady=(3, 0), padx=(10, 0)
         )
 
         thr_frame = ttk.LabelFrame(frame, text="识别阈值（0~1，越低越宽松）", padding=3)
-        thr_frame.grid(row=5, column=0, sticky="ew", pady=(5, 0))
+        thr_frame.grid(row=7, column=0, sticky="ew", pady=(5, 0))
 
         thr_items = [
             ("枪械", self.threshold_gun_var),
@@ -420,7 +436,7 @@ class SettingsWindow:
     def _sync_lua_canuse(self, gun_name: str, ammo: str, add: bool) -> None:
         """同步枪械变更到 Lua 脚本的 canUse"""
         from pubg_gun_control.lua_parser import LuaBallisticParser, BallisticConfig, GunCoefficients
-        lua_path = str(Path(__file__).resolve().parent.parent.parent / "1.2.2-2024.5.20.-GHUB.-github.lua")
+        lua_path = str(_get_project_root() / "1.2.2-2024.5.20.-GHUB.-github.lua")
         try:
             parser = LuaBallisticParser()
             config = parser.parse(lua_path)
@@ -469,6 +485,7 @@ class SettingsWindow:
                 "enabled": self.rec_enabled_var.get(),
                 "hotkey": self.rec_hotkey_var.get().strip() or "f2",
                 "rec_path": self.rec_path_var.get().strip(),
+                "template_dir": self.rec_template_dir_var.get().strip(),
                 "threshold_gun": round(self.threshold_gun_var.get(), 2),
                 "threshold_muzzle": round(self.threshold_muzzle_var.get(), 2),
                 "threshold_grip": round(self.threshold_grip_var.get(), 2),
@@ -484,7 +501,7 @@ class SettingsWindow:
         source = str(Path(__file__).resolve().parent.parent.parent / "1.2.2-2024.5.20.-GHUB.-github.lua")
         rec_path = self.rec_path_var.get().strip()
         if not rec_path:
-            rec_path = str(Path(__file__).resolve().parent.parent.parent / "pubg_rec.lua")
+            rec_path = str(_get_project_root() / "pubg_rec.lua")
 
         save_path = filedialog.asksaveasfilename(
             title="导出GHUB压枪脚本",
@@ -504,7 +521,7 @@ class SettingsWindow:
         from tkinter import filedialog, messagebox
         from pubg_gun_control.lua_generator import generate_dofile_files
 
-        project_root = Path(__file__).resolve().parent.parent.parent
+        project_root = _get_project_root()
         source = str(project_root / "1.2.2-2024.5.20.-GHUB.-github.lua")
         config_path = str(project_root / "pubg_config.lua")
         rec_path = self.rec_path_var.get().strip()

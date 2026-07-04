@@ -17,10 +17,17 @@ from typing import Any
 _CONFIG_FILENAME = "config.json"
 
 
+def _get_project_root() -> Path:
+    """获取项目根目录，兼容开发环境与 PyInstaller 打包。"""
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS)
+    return Path(__file__).resolve().parent.parent.parent
+
+
 def _get_config_path() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).parent / _CONFIG_FILENAME
-    return Path(__file__).resolve().parent.parent.parent / _CONFIG_FILENAME
+    return _get_project_root() / _CONFIG_FILENAME
 
 
 def get_default_config() -> list[dict[str, str]]:
@@ -234,7 +241,7 @@ def save_config(
 
 
 _DEFAULT_RECOGNITION: dict[str, Any] = {
-    "enabled": False,
+    "enabled": True,
     "weapon_roi": [],
     "muzzle_roi": [],
     "grip_roi": [],

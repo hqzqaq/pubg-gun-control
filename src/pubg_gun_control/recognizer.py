@@ -10,6 +10,7 @@
 """
 
 import logging
+import sys
 from pathlib import Path
 
 import cv2
@@ -19,8 +20,8 @@ logger = logging.getLogger(__name__)
 
 GUN_NAMES = [
     "M416", "Beryl M762", "AKM", "AUG", "SCAR-L", "QBZ", "G36C", "ACE32",
-    "UMP45", "MP5K", "Vector", "Micro UZI", "P90", "M249", "M16A4", "Groza",
-    "DP-28", "MK47", "Tommy Gun", "Famas", "MG3",
+    "UMP45", "MP5K", "Vector", "Micro UZI", "P90",     "M249", "M16A4", "Groza",
+    "MK47", "Tommy Gun", "Famas", "MG3",
 ]
 
 GUN_TYPE_MAP: dict[str, str] = {
@@ -28,7 +29,7 @@ GUN_TYPE_MAP: dict[str, str] = {
     "SCAR-L": "ar", "QBZ": "ar", "G36C": "ar", "ACE32": "ar",
     "M16A4": "ar", "Groza": "ar", "Famas": "ar",
     "UMP45": "smg", "MP5K": "smg", "Vector": "smg", "Micro UZI": "smg", "P90": "smg",
-    "M249": "lmg", "DP-28": "lmg", "MG3": "lmg",
+    "M249": "lmg", "MG3": "lmg",
     "MK47": "ar",
     "Tommy Gun": "smg",
 }
@@ -44,7 +45,17 @@ MUZZLE_OPTIONS_SMG = ["none", "comp", "flash", "silencer"]
 GRIP_OPTIONS = ["none", "vertical", "laser", "thumb", "half", "lightgrip"]
 STOCK_OPTIONS = ["none", "tactical", "heavy"]
 
-TEMPLATE_DIR = Path(__file__).resolve().parent.parent.parent / "templates"
+def _resolve_template_dir() -> Path:
+    """定位 templates/ 目录，兼容开发环境与 PyInstaller 打包。
+
+    打包模式下默认放在 exe 同级目录，用户重新采集模板可持久化。
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent / "templates"
+    return Path(__file__).resolve().parent.parent.parent / "templates"
+
+
+TEMPLATE_DIR = _resolve_template_dir()
 
 
 class GunRecognizer:

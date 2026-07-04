@@ -11,11 +11,19 @@ GHUB Lua 脚本生成器
 import logging
 import os
 import re
+import sys
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_REC_PATH = str(Path(__file__).resolve().parent.parent.parent / "pubg_rec.lua")
+
+def _get_project_root() -> Path:
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS)
+    return Path(__file__).resolve().parent.parent.parent
+
+
+DEFAULT_REC_PATH = str(_get_project_root() / "pubg_rec.lua")
 
 AUTO_RECOGNIZE_VARS = """
 -- ====== 自动识别变量（由 Python 程序注入） ======
@@ -190,7 +198,7 @@ def generate_config_only(
     Returns:
         配置文件路径
     """
-    project_dir = Path(__file__).resolve().parent.parent.parent
+    project_dir = _get_project_root()
     if config_output is None:
         config_output = str(project_dir / "pubg_config.lua")
 
@@ -266,7 +274,7 @@ def generate_dofile_files(
     Returns:
         (wrapper_path, config_path)
     """
-    project_dir = Path(__file__).resolve().parent.parent.parent
+    project_dir = _get_project_root()
     if config_output is None:
         config_output = str(project_dir / "pubg_config.lua")
     if wrapper_output is None:
@@ -509,6 +517,6 @@ def generate_dofile_wrapper(
     effective_config = config_path.replace("\\", "\\\\")
     effective_rec = (rec_path or DEFAULT_REC_PATH).replace("\\", "\\\\")
 
-    source = str(Path(__file__).resolve().parent.parent.parent / "1.2.2-2024.5.20.-GHUB.-github.lua")
+    source = str(_get_project_root() / "1.2.2-2024.5.20.-GHUB.-github.lua")
     wrapper, _ = generate_dofile_files(source, config_output=config_path, wrapper_output=output_path, rec_path=rec_path)
     return wrapper

@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -41,8 +42,14 @@ from .trajectory_view import TrajectoryView
 logger = logging.getLogger(__name__)
 
 
+def _resolve_project_root() -> Path:
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS)
+    return Path(__file__).resolve().parent.parent.parent.parent
+
+
 # 默认预设目录
-_DEFAULT_PRESETS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "presets"
+_DEFAULT_PRESETS_DIR = _resolve_project_root() / "presets"
 
 
 class BallisticEditorWindow(QMainWindow):
@@ -203,7 +210,7 @@ class BallisticEditorWindow(QMainWindow):
         self._dirty = False
         bak_path = Path(self._lua_path + ".bak")
 
-        config_path = Path(__file__).resolve().parent.parent.parent.parent / "pubg_config.lua"
+        config_path = _resolve_project_root() / "pubg_config.lua"
         try:
             # 如果 pubg_config.lua 不存在或被污染（含 OnEvent 等执行逻辑），先重新生成纯数据版本
             # 否则 serialize 只替换三段数据块，会保留多余的函数定义和初始化代码

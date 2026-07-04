@@ -243,13 +243,35 @@ class GunControlApp:
         file_frame.pack(fill=tk.X, padx=10, pady=5)
         ttk.Label(file_frame, text="弹孔截图:").pack(side=tk.LEFT)
         file_var = tk.StringVar()
-        file_entry = ttk.Entry(file_frame, textvariable=file_var, width=35)
+        file_entry = ttk.Entry(file_frame, textvariable=file_var, width=50)
         file_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
 
         def select_file():
-            path = filedialog.askopenfilename(filetypes=[("图片", "*.png *.jpg *.jpeg *.bmp")])
-            if path:
-                file_var.set(path)
+            # 当前窗口有 grab_set()，会拦截原生文件对话框的焦点事件，
+            # 导致 askopenfilename 可能返回空串或路径无法写回 Entry。
+            # 选择前临时释放 grab，选择完成后再恢复。
+            root.grab_release()
+            try:
+                logger.info("正在打开文件选择对话框...")
+                path = filedialog.askopenfilename(
+                    parent=root,
+                    title="选择弹孔截图",
+                    filetypes=[("图片", "*.png *.jpg *.jpeg *.bmp")],
+                )
+                logger.info("文件选择对话框返回: %r", path)
+                if path:
+                    file_var.set(path)
+                    file_entry.delete(0, tk.END)
+                    file_entry.insert(0, path)
+                    file_entry.update_idletasks()
+                    file_entry.xview_moveto(1.0)
+                    logger.info("已写入路径到输入框: %s", path)
+                else:
+                    logger.warning("未选择任何文件")
+            except Exception:
+                logger.exception("选择文件时发生异常")
+            finally:
+                root.grab_set()
 
         ttk.Button(file_frame, text="选择", width=5, command=select_file).pack(side=tk.LEFT)
 
@@ -268,6 +290,9 @@ class GunControlApp:
         ttk.Label(param_frame, text="缩放系数:").pack(side=tk.LEFT, padx=(10, 0))
         scale_var = tk.DoubleVar(value=1.0)
         ttk.Spinbox(param_frame, textvariable=scale_var, from_=0.1, to=3.0, increment=0.1, width=6, format="%.1f").pack(side=tk.LEFT, padx=5)
+        ttk.Label(param_frame, text="每段子弹数:").pack(side=tk.LEFT, padx=(10, 0))
+        seg_var = tk.IntVar(value=5)
+        ttk.Spinbox(param_frame, textvariable=seg_var, from_=1, to=50, width=5).pack(side=tk.LEFT, padx=5)
 
         def on_gun_change(event=None):
             gun = gun_var.get()
@@ -275,7 +300,7 @@ class GunControlApp:
                 interval_var.set(GUN_INTERVALS[gun])
         gun_combo.bind("<<ComboboxSelected>>", on_gun_change)
 
-        ttk.Label(root, text="缩放系数: 1.0=原始像素值, 游戏灵敏度高可调大(1.5~2.0), 低可调小(0.5~0.8)",
+        ttk.Label(root, text="缩放系数: 1.0=原始像素值, 游戏灵敏度高可调大(1.5~2.0), 低可调小(0.5~0.8)  |  分段数: 每段包含的子弹数",
                   font=("Arial", 8), foreground="gray").pack(padx=10, anchor="w")
 
         result_label = ttk.Label(root, text="", wraplength=450)
@@ -286,13 +311,14 @@ class GunControlApp:
             gun = gun_var.get().strip()
             interval = interval_var.get()
             scale = scale_var.get()
+            max_seg = seg_var.get()
             if not path:
                 result_label.config(text="请选择弹孔截图", foreground="red")
                 return
             if not gun:
                 result_label.config(text="请输入枪械名称", foreground="red")
                 return
-            result = analyze_spray_image(path, scale=scale)
+            result = analyze_spray_image(path, scale=scale, max_seg_count=max_seg)
             if not result:
                 result_label.config(text="分析失败: 未检测到足够的弹孔。尝试调整缩放系数或换一张更清晰的截图", foreground="red")
                 return
@@ -346,14 +372,18 @@ class GunControlApp:
     def _on_recognition_saved(self, rec_cfg: dict) -> None:
         """识别配置保存回调：持久化并按需启停识别"""
         old_enabled = self._recognition_config.get("enabled", False)
+        old_template_dir = self._recognition_config.get("template_dir", "")
         self._recognition_config.update(rec_cfg)
         save_recognition(self._recognition_config)
-        logger.info("识别配置已保存: enabled=%s, hotkey=%s, rec_path=%s",
-                    rec_cfg.get("enabled"), rec_cfg.get("hotkey"), rec_cfg.get("rec_path"))
+        logger.info("识别配置已保存: enabled=%s, hotkey=%s, rec_path=%s, template_dir=%s",
+                    rec_cfg.get("enabled"), rec_cfg.get("hotkey"), rec_cfg.get("rec_path"),
+                    rec_cfg.get("template_dir"))
         new_rec_path = rec_cfg.get("rec_path", "").strip()
         if new_rec_path:
             self._rec_lua_writer = RecLuaWriter(new_rec_path)
         new_enabled = bool(rec_cfg.get("enabled"))
+        new_template_dir = rec_cfg.get("template_dir", "")
+        template_changed = new_template_dir != old_template_dir
         if new_enabled and not old_enabled:
             self._start_recognition()
         elif not new_enabled and old_enabled:
@@ -362,6 +392,11 @@ class GunControlApp:
                 self._hotkey_listener = None
             if self.overlay.is_created():
                 self.overlay.update_recognition_status("")
+        elif new_enabled and template_changed and self._recognizer:
+            if self._hotkey_listener:
+                self._hotkey_listener.stop()
+                self._hotkey_listener = None
+            self._start_recognition()
 
     def start(self) -> None:
         self._running = True
