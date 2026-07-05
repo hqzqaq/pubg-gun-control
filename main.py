@@ -24,6 +24,8 @@ from pubg_gun_control.config_manager import (
     load_voice_enabled,
     load_voice_volume,
     load_voice_event_enabled,
+    load_overlay_visible,
+    load_recoil_hotkeys,
     load_recognition,
     save_recognition,
 )
@@ -55,6 +57,8 @@ class GunControlApp:
         self._voice_enabled: bool = load_voice_enabled()
         self._voice_volume: int = load_voice_volume()
         self._voice_event_enabled: dict[str, bool] = load_voice_event_enabled()
+        self._overlay_visible: bool = load_overlay_visible()
+        self._recoil_hotkeys: dict[str, list[str]] = load_recoil_hotkeys()
         self.voice_player.enabled = self._voice_enabled
         self.voice_player.volume = self._voice_volume
         self.voice_player.event_enabled = self._voice_event_enabled
@@ -171,6 +175,8 @@ class GunControlApp:
             voice_player=self.voice_player,
             recognition_config=self._recognition_config,
             on_recognition_save=self._on_recognition_saved,
+            overlay_visible=self._overlay_visible,
+            recoil_hotkeys=self._recoil_hotkeys,
         )
 
     def _on_open_editor(self) -> None:
@@ -348,12 +354,16 @@ class GunControlApp:
         voice_enabled: bool,
         voice_volume: int,
         voice_event_enabled: dict[str, bool],
+        overlay_visible: bool,
+        recoil_hotkeys: dict[str, list[str]],
     ) -> None:
         self._shortcuts = shortcuts
         self._gun_attachments = gun_attachments
         self._voice_enabled = voice_enabled
         self._voice_volume = voice_volume
         self._voice_event_enabled = voice_event_enabled
+        self._overlay_visible = overlay_visible
+        self._recoil_hotkeys = recoil_hotkeys
         self.voice_player.enabled = voice_enabled
         self.voice_player.volume = voice_volume
         self.voice_player.event_enabled = voice_event_enabled
@@ -363,10 +373,18 @@ class GunControlApp:
             voice_enabled=voice_enabled,
             voice_volume=voice_volume,
             voice_event_enabled=voice_event_enabled,
+            overlay_visible=overlay_visible,
+            recoil_hotkeys=recoil_hotkeys,
         )
+        if self.overlay.is_created():
+            if overlay_visible:
+                self.overlay.show()
+            else:
+                self.overlay.hide()
         if self.input_listener:
             self.input_listener.update_shortcuts(shortcuts)
             self.input_listener.update_gun_attachments(gun_attachments)
+            self.input_listener.update_recoil_hotkeys(recoil_hotkeys)
         logger.info("设置已保存")
 
     def _on_recognition_saved(self, rec_cfg: dict) -> None:
@@ -402,10 +420,15 @@ class GunControlApp:
         self._running = True
 
         self.overlay.create()
+        if self._overlay_visible:
+            self.overlay.show()
+        else:
+            self.overlay.hide()
         self.input_listener = InputListener(
             self._on_gun_selected, self._on_lock_changed, self._on_scope_changed,
             self._on_attachment_changed, self._on_reset, self._shortcuts, self._attachments,
             self._gun_attachments, voice_callback=self.voice_player.play,
+            recoil_hotkeys=self._recoil_hotkeys,
         )
         self.input_listener.start()
 

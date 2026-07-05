@@ -12,8 +12,12 @@ import logging
 import sys
 import tkinter as tk
 from pathlib import Path
-from tkinter import ttk
+from tkinter import ttk, messagebox
 from typing import Callable
+
+from pynput import keyboard, mouse
+from pynput.keyboard import Key
+from pynput.mouse import Button
 
 from pubg_gun_control.voice_prompt import VoicePlayer
 
@@ -73,6 +77,7 @@ class SettingsWindow:
             bool,
             int,
             dict[str, bool],
+            bool,
         ], None],
         voice_enabled: bool = True,
         voice_volume: int = 100,
@@ -80,6 +85,8 @@ class SettingsWindow:
         voice_player: VoicePlayer | None = None,
         recognition_config: dict | None = None,
         on_recognition_save: Callable[[dict], None] | None = None,
+        overlay_visible: bool = True,
+        recoil_hotkeys: dict[str, list[str]] | None = None,
     ) -> None:
         self.parent = parent
         self.shortcuts = list(shortcuts)
@@ -88,6 +95,13 @@ class SettingsWindow:
         self.voice_player = voice_player
         self._recognition_config = recognition_config or {}
         self.on_recognition_save = on_recognition_save
+        default_hotkeys: dict[str, list[str]] = {"enable": ["caps_lock", "1"], "disable": ["tab", "2", "g", "3", "4", "5"]}
+        self._recoil_hotkeys = dict(recoil_hotkeys) if recoil_hotkeys else default_hotkeys
+        self._recoil_enable_list: list[str] = list(self._recoil_hotkeys.get("enable", default_hotkeys["enable"]))
+        self._recoil_disable_list: list[str] = list(self._recoil_hotkeys.get("disable", default_hotkeys["disable"]))
+        self._recording_for: str | None = None
+        self._record_keyboard_listener: keyboard.Listener | None = None
+        self._record_mouse_listener: mouse.Listener | None = None
         self.rec_enabled_var = tk.BooleanVar(value=bool(self._recognition_config.get("enabled", False)))
         self.rec_hotkey_var = tk.StringVar(value=str(self._recognition_config.get("hotkey", "f2")))
         self.rec_path_var = tk.StringVar(value=str(self._recognition_config.get("rec_path", "")))
@@ -99,6 +113,7 @@ class SettingsWindow:
         self.threshold_scope_var = tk.DoubleVar(value=float(self._recognition_config.get("threshold_scope", 0.35)))
         self.voice_enabled_var = tk.BooleanVar(value=voice_enabled)
         self.voice_volume_var = tk.IntVar(value=max(0, min(100, int(voice_volume))))
+        self.overlay_visible_var = tk.BooleanVar(value=overlay_visible)
         self._default_event_enabled = self._build_default_event_enabled(voice_event_enabled)
         self.voice_event_vars: dict[str, tk.BooleanVar] = {
             event: tk.BooleanVar(value=self._default_event_enabled.get(event, True))
@@ -144,15 +159,221 @@ class SettingsWindow:
         main_frame = ttk.Frame(self.window, padding=8)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        self._create_gun_section(main_frame, row=0)
-        self._create_voice_section(main_frame, row=1)
-        self._create_recognition_section(main_frame, row=2)
-        self._create_buttons(main_frame, row=3)
+        self._create_overlay_section(main_frame, row=0)
+        self._create_recoil_hotkey_section(main_frame, row=1)
+        self._create_gun_section(main_frame, row=2)
+        self._create_voice_section(main_frame, row=3)
+        self._create_recognition_section(main_frame, row=4)
+        self._create_buttons(main_frame, row=5)
 
-        main_frame.rowconfigure(0, weight=1)
+        main_frame.rowconfigure(2, weight=1)
         main_frame.columnconfigure(0, weight=1)
 
         self.window.protocol("WM_DELETE_WINDOW", self._on_cancel)
+
+    # ---- 界面设置区 ----
+
+    def _create_overlay_section(self, parent: ttk.Frame, row: int) -> None:
+        frame = ttk.LabelFrame(parent, text="界面设置", padding=5)
+        frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        ttk.Checkbutton(frame, text="显示左上角浮窗", variable=self.overlay_visible_var).grid(
+            row=0, column=0, sticky="w"
+        )
+
+    # ---- 压枪开关快捷键区 ----
+
+    _RECOIL_HOTKEY_OPTIONS: tuple[str, ...] = (
+        "caps_lock", "tab", "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12",
+        "1", "2", "3", "4", "5", "g", "mouse_forward", "mouse_backward", "mouse_middle",
+    )
+
+    _RECOIL_HOTKEY_LABELS: dict[str, str] = {
+        "caps_lock": "CapsLock",
+        "tab": "Tab",
+        "mouse_forward": "鼠标前进键(G5)",
+        "mouse_backward": "鼠标后退键(G4)",
+        "mouse_middle": "鼠标中键",
+    }
+
+    def _create_recoil_hotkey_section(self, parent: ttk.Frame, row: int) -> None:
+        frame = ttk.LabelFrame(parent, text="压枪模式开关", padding=5)
+        frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        frame.columnconfigure((0, 1), weight=1)
+
+        self._recoil_enable_listbox, self._recoil_enable_combo, self._recoil_enable_record_btn = self._build_recoil_hotkey_column(
+            frame, row=0, column=0, title="开启压枪", items=self._recoil_enable_list,
+            add_cmd=self._on_add_recoil_enable, remove_cmd=self._on_remove_recoil_enable,
+            record_cmd=lambda: self._on_record_recoil_hotkey("enable"),
+        )
+        self._recoil_disable_listbox, self._recoil_disable_combo, self._recoil_disable_record_btn = self._build_recoil_hotkey_column(
+            frame, row=0, column=1, title="关闭压枪", items=self._recoil_disable_list,
+            add_cmd=self._on_add_recoil_disable, remove_cmd=self._on_remove_recoil_disable,
+            record_cmd=lambda: self._on_record_recoil_hotkey("disable"),
+        )
+
+        ttk.Label(
+            frame,
+            text="通过控制键盘大小写状态实现，CapsLock 为切换开关，其他按键为独立开关；"
+                 "可直接输入键名，如 space、alt_l、shift_r、a、0、mouse_forward 等",
+            font=("Arial", 8), foreground="gray",
+        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(3, 0))
+
+    def _build_recoil_hotkey_column(
+        self,
+        parent: ttk.Frame,
+        row: int,
+        column: int,
+        title: str,
+        items: list[str],
+        add_cmd: Callable[[], None],
+        remove_cmd: Callable[[], None],
+        record_cmd: Callable[[], None],
+    ) -> tuple[tk.Listbox, ttk.Combobox, ttk.Button]:
+        col_frame = ttk.LabelFrame(parent, text=title, padding=3)
+        col_frame.grid(row=row, column=column, sticky="nsew", padx=3, pady=3)
+        col_frame.rowconfigure(0, weight=1)
+        col_frame.columnconfigure(0, weight=1)
+
+        listbox = tk.Listbox(col_frame, height=4, exportselection=False)
+        listbox.grid(row=0, column=0, columnspan=3, sticky="nsew")
+        for item in items:
+            listbox.insert(tk.END, self._RECOIL_HOTKEY_LABELS.get(item, item))
+
+        combo = ttk.Combobox(col_frame, values=list(self._RECOIL_HOTKEY_OPTIONS), width=14, state="normal")
+        combo.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(3, 0))
+
+        btn_frame = ttk.Frame(col_frame)
+        btn_frame.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(3, 0))
+        ttk.Button(btn_frame, text="添加", command=add_cmd, width=5).pack(side=tk.LEFT, padx=(0, 3))
+        ttk.Button(btn_frame, text="删除", command=remove_cmd, width=5).pack(side=tk.LEFT, padx=(0, 3))
+        record_btn = ttk.Button(btn_frame, text="录制", command=record_cmd, width=5)
+        record_btn.pack(side=tk.LEFT)
+
+        return listbox, combo, record_btn
+
+    def _add_recoil_hotkey(self, listbox: tk.Listbox, combo: ttk.Combobox) -> None:
+        key = combo.get().strip().lower()
+        if not key:
+            return
+        existing = [listbox.get(i) for i in range(listbox.size())]
+        label = self._RECOIL_HOTKEY_LABELS.get(key, key)
+        if label not in existing:
+            listbox.insert(tk.END, label)
+        combo.set("")
+
+    def _remove_recoil_hotkey(self, listbox: tk.Listbox) -> None:
+        selection = listbox.curselection()
+        if selection:
+            listbox.delete(selection[0])
+
+    def _on_add_recoil_enable(self) -> None:
+        self._add_recoil_hotkey(self._recoil_enable_listbox, self._recoil_enable_combo)
+
+    def _on_remove_recoil_enable(self) -> None:
+        self._remove_recoil_hotkey(self._recoil_enable_listbox)
+
+    def _on_add_recoil_disable(self) -> None:
+        self._add_recoil_hotkey(self._recoil_disable_listbox, self._recoil_disable_combo)
+
+    def _on_remove_recoil_disable(self) -> None:
+        self._remove_recoil_hotkey(self._recoil_disable_listbox)
+
+    def _on_record_recoil_hotkey(self, target: str) -> None:
+        """开始录制压枪开关热键，target 为 enable 或 disable。"""
+        if self._recording_for is not None:
+            self._stop_recording()
+            return
+        self._recording_for = target
+        messagebox.showinfo("录制热键", "请在 5 秒内按下要录制的按键", parent=self.window)
+        self._update_record_buttons()
+
+        try:
+            self._record_keyboard_listener = keyboard.Listener(
+                on_press=self._on_record_key_press,
+                suppress=False,
+            )
+            self._record_mouse_listener = mouse.Listener(
+                on_click=self._on_record_mouse_click,
+                suppress=False,
+            )
+            self._record_keyboard_listener.start()
+            self._record_mouse_listener.start()
+            self.window.after(5000, self._stop_recording)
+        except Exception as exc:
+            logger.error("启动热键录制监听失败: %s", exc)
+            self._stop_recording()
+
+    def _on_record_key_press(self, key: Key | keyboard.KeyCode | None) -> None:
+        hotkey_name = self._pynput_key_to_name(key)
+        if hotkey_name and hotkey_name not in {"alt_l", "alt_r", "alt_gr", "ctrl_l", "ctrl_r", "shift_l", "shift_r", "cmd_l", "cmd_r"}:
+            self.window.after(0, lambda: self._apply_recorded_key(hotkey_name))
+
+    def _on_record_mouse_click(self, x: int, y: int, button: Button, pressed: bool) -> None:
+        if not pressed:
+            return
+        mouse_map = {
+            Button.x2: "mouse_forward",
+            Button.x1: "mouse_backward",
+            Button.middle: "mouse_middle",
+        }
+        hotkey_name = mouse_map.get(button)
+        if hotkey_name:
+            self.window.after(0, lambda: self._apply_recorded_key(hotkey_name))
+
+    def _apply_recorded_key(self, hotkey_name: str) -> None:
+        if self._recording_for == "enable":
+            self._recoil_enable_combo.set(hotkey_name)
+            self._add_key_to_listbox(self._recoil_enable_listbox, hotkey_name)
+        elif self._recording_for == "disable":
+            self._recoil_disable_combo.set(hotkey_name)
+            self._add_key_to_listbox(self._recoil_disable_listbox, hotkey_name)
+        self._stop_recording()
+
+    def _add_key_to_listbox(self, listbox: tk.Listbox, key: str) -> None:
+        label = self._RECOIL_HOTKEY_LABELS.get(key, key)
+        existing = [listbox.get(i) for i in range(listbox.size())]
+        if label not in existing:
+            listbox.insert(tk.END, label)
+
+    def _stop_recording(self) -> None:
+        if self._record_keyboard_listener is not None:
+            try:
+                self._record_keyboard_listener.stop()
+            except Exception:
+                pass
+            self._record_keyboard_listener = None
+        if self._record_mouse_listener is not None:
+            try:
+                self._record_mouse_listener.stop()
+            except Exception:
+                pass
+            self._record_mouse_listener = None
+        self._recording_for = None
+        self._update_record_buttons()
+
+    def _update_record_buttons(self) -> None:
+        text = "停止" if self._recording_for else "录制"
+        self._recoil_enable_record_btn.config(text=text)
+        self._recoil_disable_record_btn.config(text=text)
+
+    @staticmethod
+    def _pynput_key_to_name(key: Key | keyboard.KeyCode | None) -> str | None:
+        if key is None:
+            return None
+        if isinstance(key, Key):
+            return key.name
+        if hasattr(key, "char") and key.char:
+            return key.char.lower()
+        return None
+
+    def _get_recoil_hotkeys(self) -> dict[str, list[str]]:
+        label_to_key = {label: key for key, label in self._RECOIL_HOTKEY_LABELS.items()}
+        enable_labels = [self._recoil_enable_listbox.get(i) for i in range(self._recoil_enable_listbox.size())]
+        disable_labels = [self._recoil_disable_listbox.get(i) for i in range(self._recoil_disable_listbox.size())]
+        return {
+            "enable": [label_to_key.get(label, label) for label in enable_labels],
+            "disable": [label_to_key.get(label, label) for label in disable_labels],
+        }
 
     # ---- 枪械配置区 ----
 
@@ -479,7 +700,9 @@ class SettingsWindow:
         voice_event_enabled = {
             event: bool(var.get()) for event, var in self.voice_event_vars.items()
         }
-        self.on_save(self.shortcuts, new_gun_attachments, voice_enabled, voice_volume, voice_event_enabled)
+        overlay_visible = self.overlay_visible_var.get()
+        recoil_hotkeys = self._get_recoil_hotkeys()
+        self.on_save(self.shortcuts, new_gun_attachments, voice_enabled, voice_volume, voice_event_enabled, overlay_visible, recoil_hotkeys)
         if self.on_recognition_save is not None:
             rec_cfg = {
                 "enabled": self.rec_enabled_var.get(),

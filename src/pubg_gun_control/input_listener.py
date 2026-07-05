@@ -68,6 +68,12 @@ class InputListener:
         "stock": ["无", "战术", "重型"],
     }
 
+    _MOUSE_HOTKEY_MAP: dict[str, Button] = {
+        "mouse_forward": Button.x2,
+        "mouse_backward": Button.x1,
+        "mouse_middle": Button.middle,
+    }
+
     def __init__(
         self,
         callback: Callable[[str], None],
@@ -79,6 +85,7 @@ class InputListener:
         attachment_shortcuts: list[dict[str, str]] | None = None,
         gun_attachments: dict[str, dict[str, bool]] | None = None,
         voice_callback: Callable[[str], None] | None = None,
+        recoil_hotkeys: dict[str, str] | None = None,
     ) -> None:
         self.callback = callback
         self.lock_callback = lock_callback
@@ -113,6 +120,8 @@ class InputListener:
 
         self.scope_mode: int = 1
         self._last_auto_text: str = "无"
+        self._recoil_hotkeys: dict[str, list[str]] = {"enable": [], "disable": []}
+        self.update_recoil_hotkeys(recoil_hotkeys or {})
 
     def set_auto_text(self, text: str) -> None:
         """由外部（自动识别）设置当前枪械名"""
@@ -134,6 +143,39 @@ class InputListener:
 
     def update_gun_attachments(self, gun_attachments: dict[str, dict[str, bool]]) -> None:
         self._gun_attachments = gun_attachments
+
+    def update_recoil_hotkeys(self, recoil_hotkeys: dict[str, list[str]]) -> None:
+        """更新压枪模式开关快捷键配置。"""
+        self._recoil_hotkeys = {
+            "enable": [str(k).strip().lower() for k in recoil_hotkeys.get("enable", ["caps_lock", "1"]) if str(k).strip()],
+            "disable": [str(k).strip().lower() for k in recoil_hotkeys.get("disable", ["tab", "2", "g", "3", "4", "5"]) if str(k).strip()],
+        }
+
+    def _enable_recoil(self) -> None:
+        """开启压枪模式并同步 CapsLock 状态。"""
+        if not self.aim_mode_enabled:
+            self.aim_mode_enabled = True
+            self._update_gun_display(self._last_auto_text)
+            if self.voice_callback:
+                self.voice_callback("recoil_on")
+        self._turn_on_caps_lock()
+
+    def _disable_recoil(self) -> None:
+        """关闭压枪模式并同步 CapsLock 状态。"""
+        if self.aim_mode_enabled:
+            if self.voice_callback:
+                self.voice_callback("recoil_off")
+        self.aim_mode_enabled = False
+        self.current_text = "无"
+        self._update_gun_display("无")
+        self._turn_off_caps_lock()
+
+    def _toggle_recoil(self) -> None:
+        """切换压枪模式（用于 CapsLock 等切换键）。"""
+        if self.aim_mode_enabled:
+            self._disable_recoil()
+        else:
+            self._enable_recoil()
 
     def is_caps_lock_on(self) -> bool:
         return ctypes.windll.user32.GetKeyState(0x14) & 0xFFFF != 0
@@ -186,6 +228,46 @@ class InputListener:
                 self.attachment_callback(cat, "无")
         logger.info("已重置所有状态")
 
+    @staticmethod
+    def _key_to_hotkey_name(key: Key | keyboard.KeyCode | None) -> str | None:
+        """把 pynput 按键对象转换为配置中的热键名。"""
+        if key is None:
+            return None
+        if isinstance(key, Key):
+            return key.name
+        if hasattr(key, "char") and key.char:
+            return key.char.lower()
+        return None
+
+    def _handle_recoil_hotkey(self, hotkey_name: str) -> bool:
+        """根据配置处理压枪开关热键，返回是否命中。"""
+        if not hotkey_name:
+            return False
+        enable_keys = self._recoil_hotkeys.get("enable", [])
+        disable_keys = self._recoil_hotkeys.get("disable", [])
+
+        is_enable = hotkey_name in enable_keys
+        is_disable = hotkey_name in disable_keys
+
+        if is_enable and is_disable:
+            self._toggle_recoil()
+            return True
+
+        if is_enable:
+            if hotkey_name == "caps_lock":
+                if time.monotonic() < self._ignore_caps_lock_until:
+                    return True
+                self._toggle_recoil()
+            else:
+                self._enable_recoil()
+            return True
+
+        if is_disable:
+            self._disable_recoil()
+            return True
+
+        return False
+
     def _on_key_press(self, key: Key | keyboard.KeyCode | None) -> None:
         try:
             if key == Key.alt_l or key == Key.alt:
@@ -209,34 +291,10 @@ class InputListener:
                 self.win_pressed = True
                 if self.ctrl_pressed and self.alt_pressed:
                     self._do_reset()
-            elif key == Key.caps_lock:
-                if time.monotonic() < self._ignore_caps_lock_until:
+            else:
+                hotkey_name = self._key_to_hotkey_name(key)
+                if hotkey_name and self._handle_recoil_hotkey(hotkey_name):
                     return
-                if self.aim_mode_enabled:
-                    self._cancel_aim_mode()
-                else:
-                    self.aim_mode_enabled = True
-                    self._update_gun_display(self._last_auto_text)
-                    if self.voice_callback:
-                        self.voice_callback("recoil_on")
-            elif key == Key.tab:
-                self._cancel_aim_mode()
-                self._turn_off_caps_lock()
-            elif hasattr(key, "char") and key.char:
-                if key.char == "1":
-                    if self.current_text == "无":
-                        self.aim_mode_enabled = True
-                        self.current_text = self.last_gun_name
-                        self._update_gun_display(self.current_text)
-                        if self.voice_callback:
-                            self.voice_callback("recoil_on")
-                    self._turn_on_caps_lock()
-                elif key.char == "2":
-                    self._cancel_aim_mode()
-                    self._turn_off_caps_lock()
-                elif key.char.lower() == "g" or key.char in ("3", "4", "5"):
-                    self._cancel_aim_mode()
-                    self._turn_off_caps_lock()
         except AttributeError:
             pass
 
@@ -261,6 +319,13 @@ class InputListener:
 
     def _on_mouse_click(self, x: int, y: int, button: Button, pressed: bool) -> None:
         if not pressed:
+            return
+
+        mouse_hotkey = next(
+            (name for name, mapped_btn in self._MOUSE_HOTKEY_MAP.items() if mapped_btn == button),
+            None,
+        )
+        if mouse_hotkey and self._handle_recoil_hotkey(mouse_hotkey):
             return
 
         if not self.is_caps_lock_on():

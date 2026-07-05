@@ -66,6 +66,13 @@ _DEFAULT_VOICE_EVENT_ENABLED: dict[str, bool] = {
 
 _VOICE_EVENT_KEYS: tuple[str, ...] = tuple(_DEFAULT_VOICE_EVENT_ENABLED.keys())
 
+_DEFAULT_RECOIL_HOTKEYS: dict[str, list[str]] = {
+    "enable": ["caps_lock", "1"],
+    "disable": ["tab", "2", "g", "3", "4", "5"],
+}
+
+_RECOIL_HOTKEY_KEYS: tuple[str, ...] = tuple(_DEFAULT_RECOIL_HOTKEYS.keys())
+
 
 def get_default_attachments() -> list[dict[str, str]]:
     return list(_DEFAULT_ATTACHMENTS)
@@ -142,6 +149,23 @@ def load_voice_enabled() -> bool:
         return True
 
 
+def load_overlay_visible() -> bool:
+    """读取浮窗显示开关状态，默认显示。"""
+    config_path = _get_config_path()
+    if not config_path.exists():
+        return True
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            data: dict[str, Any] = json.load(f)
+        overlay_visible = data.get("overlay_visible")
+        if isinstance(overlay_visible, bool):
+            return overlay_visible
+        return True
+    except (json.JSONDecodeError, OSError):
+        return True
+
+
 def load_voice_volume() -> int:
     """读取语音音量（0~100），默认 100。"""
     config_path = _get_config_path()
@@ -190,6 +214,38 @@ def load_voice_event_enabled() -> dict[str, bool]:
         return result
 
 
+def _normalize_recoil_hotkeys(hotkeys: Any) -> dict[str, list[str]]:
+    """把配置中的字符串或列表统一为字符串列表，过滤无效值。"""
+    result: dict[str, list[str]] = {key: list(value) for key, value in _DEFAULT_RECOIL_HOTKEYS.items()}
+    if not isinstance(hotkeys, dict):
+        return result
+    for key in _RECOIL_HOTKEY_KEYS:
+        value = hotkeys.get(key)
+        items: list[str] = []
+        if isinstance(value, str):
+            items = [value]
+        elif isinstance(value, list):
+            items = value
+        normalized = [str(item).strip().lower() for item in items if isinstance(item, str) and str(item).strip()]
+        if normalized:
+            result[key] = normalized
+    return result
+
+
+def load_recoil_hotkeys() -> dict[str, list[str]]:
+    """读取压枪模式开关快捷键配置，默认保留 caps_lock/1 开、tab/2/g/3/4/5 关。"""
+    config_path = _get_config_path()
+    if not config_path.exists():
+        return dict(_DEFAULT_RECOIL_HOTKEYS)
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            data: dict[str, Any] = json.load(f)
+        return _normalize_recoil_hotkeys(data.get("recoil_hotkeys"))
+    except (json.JSONDecodeError, OSError):
+        return dict(_DEFAULT_RECOIL_HOTKEYS)
+
+
 def save_config(
     shortcuts: list[dict[str, str]],
     attachments: list[dict[str, str]] | None = None,
@@ -197,6 +253,8 @@ def save_config(
     voice_enabled: bool | None = None,
     voice_volume: int | None = None,
     voice_event_enabled: dict[str, bool] | None = None,
+    overlay_visible: bool | None = None,
+    recoil_hotkeys: dict[str, list[str]] | None = None,
 ) -> None:
     config_path = _get_config_path()
     data: dict[str, Any] = {"shortcuts": shortcuts}
@@ -212,6 +270,10 @@ def save_config(
         data["voice_enabled"] = voice_enabled
     else:
         data["voice_enabled"] = load_voice_enabled()
+    if overlay_visible is not None:
+        data["overlay_visible"] = bool(overlay_visible)
+    else:
+        data["overlay_visible"] = load_overlay_visible()
     if voice_volume is not None:
         clamped = int(voice_volume)
         if clamped < 0:
@@ -231,6 +293,10 @@ def save_config(
         data["voice_event_enabled"] = normalized
     else:
         data["voice_event_enabled"] = load_voice_event_enabled()
+    if recoil_hotkeys is not None:
+        data["recoil_hotkeys"] = _normalize_recoil_hotkeys(recoil_hotkeys)
+    else:
+        data["recoil_hotkeys"] = load_recoil_hotkeys()
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
