@@ -122,9 +122,14 @@
       "grip": false,
       "stock": false
     },
-    "Tommy Gun": {
-      "muzzle": false,
+    "k2": {
+      "muzzle": true,
       "grip": false,
+      "stock": false
+    },
+    "Tommy Gun": {
+      "muzzle": true,
+      "grip": true,
       "stock": false
     },
     "Vector": {
@@ -149,6 +154,7 @@
     }
   },
   "voice_enabled": true,
+  "overlay_visible": true,
   "voice_volume": 100,
   "voice_event_enabled": {
     "recoil_on": true,
@@ -156,6 +162,21 @@
     "lock_on": true,
     "lock_off": true,
     "locked_action": true
+  },
+  "recoil_hotkeys": {
+    "enable": [
+      "caps_lock",
+      "1"
+    ],
+    "disable": [
+      "tab",
+      "2",
+      "g",
+      "3",
+      "4",
+      "5",
+      "b"
+    ]
   },
   "recognition": {
     "enabled": true,
@@ -192,6 +213,7 @@
     "hotkey": "f2",
     "rec_path": "",
     "template_dir": "",
+    "base_lua_path": "",
     "threshold_gun": 0.5,
     "threshold_muzzle": 0.25,
     "threshold_grip": 0.3,
