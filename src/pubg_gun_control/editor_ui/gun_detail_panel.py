@@ -21,6 +21,8 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QSpinBox,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -52,6 +54,8 @@ class GunDetailPanel(QWidget):
         self._gun: GunCoefficients | None = None
         self._spins: dict[str, QDoubleSpinBox] = {}
         self._mode_combo: QComboBox | None = None
+        self._interval_spin: QSpinBox | None = None
+        self._ballistic_edit: QTextEdit | None = None
         self._updating = False
         self._build_ui()
 
@@ -93,6 +97,28 @@ class GunDetailPanel(QWidget):
             self._spins[field_name] = spin
             form.addRow(f"{label_text}:", spin)
         layout.addLayout(form)
+
+        # 射击间隔
+        interval_frame = QFrame()
+        interval_frame.setFrameShape(QFrame.StyledPanel)
+        interval_layout = QHBoxLayout(interval_frame)
+        interval_layout.setContentsMargins(8, 4, 8, 4)
+        interval_layout.addWidget(QLabel("射击间隔 (ms):"))
+        self._interval_spin = QSpinBox()
+        self._interval_spin.setRange(1, 1000)
+        self._interval_spin.setSingleStep(1)
+        self._interval_spin.valueChanged.connect(self._on_interval_changed)
+        interval_layout.addWidget(self._interval_spin)
+        interval_layout.addStretch()
+        layout.addWidget(interval_frame)
+
+        # 弹道数据
+        layout.addWidget(QLabel("弹道数据 (每行: 子弹序号, 累计偏移):"))
+        self._ballistic_edit = QTextEdit()
+        self._ballistic_edit.setMaximumHeight(160)
+        self._ballistic_edit.textChanged.connect(self._on_ballistic_changed)
+        layout.addWidget(self._ballistic_edit)
+
         layout.addStretch()
 
     def set_gun(self, gun: GunCoefficients | None) -> None:
@@ -107,6 +133,10 @@ class GunDetailPanel(QWidget):
                     spin.setEnabled(False)
                 self._mode_combo.setEnabled(False)
                 self._mode_combo.setCurrentIndex(0)
+                self._interval_spin.setEnabled(False)
+                self._interval_spin.setValue(87)
+                self._ballistic_edit.setEnabled(False)
+                self._ballistic_edit.clear()
             else:
                 self._title.setText(f"{gun.name}")
                 for field_name, spin in self._spins.items():
@@ -117,6 +147,10 @@ class GunDetailPanel(QWidget):
                     if self._mode_combo.itemData(i) == gun.mode:
                         self._mode_combo.setCurrentIndex(i)
                         break
+                self._interval_spin.setEnabled(True)
+                self._interval_spin.setValue(gun.interval)
+                self._ballistic_edit.setEnabled(True)
+                self._ballistic_edit.setPlainText(self._format_ballistic(gun.ballistic))
         finally:
             self._updating = False
 
@@ -127,6 +161,28 @@ class GunDetailPanel(QWidget):
         for field_name, spin in self._spins.items():
             setattr(self._gun, field_name, spin.value())
         self._gun.mode = self._mode_combo.currentData()
+        self._gun.interval = self._interval_spin.value()
+        self._gun.ballistic = self._parse_ballistic(self._ballistic_edit.toPlainText())
+
+    @staticmethod
+    def _format_ballistic(ballistic: list[tuple[int, float]]) -> str:
+        return "\n".join(f"{num}, {offset:g}" for num, offset in ballistic)
+
+    @staticmethod
+    def _parse_ballistic(text: str) -> list[tuple[int, float]]:
+        result: list[tuple[int, float]] = []
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or line.startswith("--"):
+                continue
+            parts = [p.strip() for p in line.split(",")]
+            if len(parts) < 2:
+                continue
+            try:
+                result.append((int(parts[0]), float(parts[1])))
+            except ValueError:
+                continue
+        return result
 
     def _on_spin_changed(self, _value: float) -> None:
         if self._updating:
@@ -135,6 +191,18 @@ class GunDetailPanel(QWidget):
         self.data_changed.emit()
 
     def _on_mode_changed(self, _index: int) -> None:
+        if self._updating:
+            return
+        self.apply_to_gun()
+        self.data_changed.emit()
+
+    def _on_interval_changed(self, _value: int) -> None:
+        if self._updating:
+            return
+        self.apply_to_gun()
+        self.data_changed.emit()
+
+    def _on_ballistic_changed(self) -> None:
         if self._updating:
             return
         self.apply_to_gun()

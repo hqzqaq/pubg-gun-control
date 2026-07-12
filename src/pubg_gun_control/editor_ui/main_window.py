@@ -145,6 +145,13 @@ class BallisticEditorWindow(QMainWindow):
         act_exit.triggered.connect(self.close)
         file_menu.addAction(act_exit)
 
+        # 工具菜单
+        tools_menu = menubar.addMenu("工具(&T)")
+
+        act_import_ballistic = QAction("导入弹道分析结果…", self)
+        act_import_ballistic.triggered.connect(self._on_import_ballistic)
+        tools_menu.addAction(act_import_ballistic)
+
         # 预设菜单
         preset_menu = menubar.addMenu("预设(&P)")
 
@@ -210,6 +217,15 @@ class BallisticEditorWindow(QMainWindow):
         self._dirty = False
         bak_path = Path(self._lua_path + ".bak")
 
+        messages: list[str] = [f"已写入：\n{self._lua_path}", f"\n备份文件：\n{bak_path}"]
+
+        # 同步到识别配置中指定的基础脚本（导出 GHUB/dofile 脚本的源文件）
+        # 若当前打开的文件即基础脚本，则跳过避免重复写入
+        base_sync_msg = self._sync_to_base_lua()
+        if base_sync_msg:
+            messages.append(base_sync_msg)
+
+        # 同步到 dofile 配置文件
         config_path = _resolve_project_root() / "pubg_config.lua"
         try:
             # 如果 pubg_config.lua 不存在或被污染（含 OnEvent 等执行逻辑），先重新生成纯数据版本
@@ -223,19 +239,41 @@ class BallisticEditorWindow(QMainWindow):
                     need_regen = True
             if need_regen:
                 from pubg_gun_control.lua_generator import generate_config_only
-                source = str(config_path.parent / "1.2.2-2024.5.20.-GHUB.-github.lua")
-                generate_config_only(source, config_output=str(config_path))
+                generate_config_only(self._lua_path, config_output=str(config_path))
             self._parser.serialize(self._config, str(config_path), backup=False)
-            config_msg = f"\n\ndofile配置已同步: {config_path}"
+            messages.append(f"\n\ndofile配置已同步: {config_path}")
         except Exception as exc:
-            config_msg = f"\n\ndofile配置同步失败: {exc}"
+            messages.append(f"\n\ndofile配置同步失败: {exc}")
 
-        QMessageBox.information(
-            self,
-            "保存成功",
-            f"已写入：\n{self._lua_path}\n\n备份文件：\n{bak_path}{config_msg}",
-        )
+        QMessageBox.information(self, "保存成功", "\n".join(messages))
         self._update_status(f"已保存: {self._lua_path}")
+
+    def _sync_to_base_lua(self) -> str:
+        """同步当前配置到识别配置中指定的基础脚本。
+
+        Returns:
+            同步结果消息（成功/失败/跳过），空字符串表示无需同步。
+        """
+        from ..config_manager import load_base_lua_path, load_recognition
+
+        try:
+            recognition = load_recognition()
+            base_lua_path = load_base_lua_path(recognition)
+        except Exception as exc:
+            return f"\n\n基础脚本同步失败（读取配置异常）: {exc}"
+
+        if not base_lua_path:
+            return ""
+        # 当前打开的文件即基础脚本，无需重复写入
+        if Path(base_lua_path).resolve() == Path(self._lua_path).resolve():
+            return ""
+        if not Path(base_lua_path).exists():
+            return f"\n\n基础脚本同步失败（文件不存在）: {base_lua_path}"
+        try:
+            self._parser.serialize(self._config, base_lua_path, backup=True)
+            return f"\n\n基础脚本已同步: {base_lua_path}"
+        except BallisticParseError as exc:
+            return f"\n\n基础脚本同步失败: {exc}"
 
     def _on_save_lua_as(self) -> None:
         if self._config is None:
@@ -253,6 +291,91 @@ class BallisticEditorWindow(QMainWindow):
             return
         self._lua_path = path
         self._update_status(f"已另存为: {path}")
+
+    def _on_import_ballistic(self) -> None:
+        """导入弹道分析生成的 lua 函数，应用到当前或同名枪械"""
+        if self._config is None:
+            QMessageBox.warning(self, "提示", "请先打开一个 lua 文件")
+            return
+
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择弹道分析结果",
+            "",
+            "Lua 脚本 (*.lua);;所有文件 (*)",
+        )
+        if not path:
+            return
+
+        try:
+            content = Path(path).read_text(encoding="utf-8")
+        except OSError as exc:
+            QMessageBox.critical(self, "读取失败", f"无法读取文件:\n{exc}")
+            return
+
+        funcs = self._parser.parse_gun_functions(content)
+        if not funcs:
+            QMessageBox.warning(self, "未识别", "未在文件中检测到 pubg[\"GunName\"] 弹道函数")
+            return
+
+        # 若只有一个函数直接用它，否则让用户选择
+        if len(funcs) == 1:
+            src_name = next(iter(funcs))
+        else:
+            src_name, ok = QInputDialog.getItem(
+                self,
+                "选择要导入的枪械",
+                "文件中包含多把枪械，请选择：",
+                list(funcs.keys()),
+                0,
+                False,
+            )
+            if not ok or not src_name:
+                return
+
+        data = funcs[src_name]
+        interval = data["interval"]
+        ballistic = data["ballistic"]
+
+        # 决定目标枪械：同名优先，否则当前选中，否则让用户选
+        target_name: str | None = None
+        if self._config.find_gun(src_name) is not None:
+            target_name = src_name
+        elif self._current_gun_name and self._config.find_gun(self._current_gun_name) is not None:
+            reply = QMessageBox.question(
+                self,
+                "应用到当前枪械",
+                f"文件中为 [{src_name}]，是否将其 interval/ballistic 应用到当前选中的 [{self._current_gun_name}]？",
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            if reply == QMessageBox.Yes:
+                target_name = self._current_gun_name
+
+        if target_name is None:
+            all_guns = [
+                g.name for ammo in self._config.ammo_groups.values() for g in ammo
+            ]
+            target_name, ok = QInputDialog.getItem(
+                self,
+                "选择目标枪械",
+                f"[{src_name}] 与现有枪械名不匹配，请选择要应用的目标枪械：",
+                all_guns,
+                0,
+                False,
+            )
+            if not ok or not target_name:
+                return
+
+        gun = self._config.find_gun(target_name)
+        if gun is None:
+            QMessageBox.warning(self, "未找到", f"目标枪械 [{target_name}] 不存在")
+            return
+
+        gun.interval = interval
+        gun.ballistic = ballistic
+        self._dirty = True
+        self._on_gun_selected(target_name)
+        self._update_status(f"已从 [{src_name}] 导入弹道到 [{target_name}]")
 
     # ---- 枪械联动 ----
 
