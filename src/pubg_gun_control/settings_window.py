@@ -42,9 +42,11 @@ _ATTACH_LABELS = {"muzzle": "枪口", "grip": "握把", "stock": "枪托"}
 _AMMO_LABELS = {"7.62": "7.62mm", "5.56": "5.56mm", "9mm": "9mm"}
 
 
-def _load_guns_from_lua() -> dict[str, list[str]]:
+def _load_guns_from_lua(lua_path: str | None = None) -> dict[str, list[str]]:
     from pubg_gun_control.lua_parser import LuaBallisticParser
-    lua_path = str(_get_project_root() / "1.2.2-2024.5.20.-GHUB.-github.lua")
+    from pubg_gun_control.config_manager import load_base_lua_path
+    if lua_path is None:
+        lua_path = load_base_lua_path()
     try:
         parser = LuaBallisticParser()
         config = parser.parse(lua_path)
@@ -106,6 +108,7 @@ class SettingsWindow:
         self.rec_hotkey_var = tk.StringVar(value=str(self._recognition_config.get("hotkey", "f2")))
         self.rec_path_var = tk.StringVar(value=str(self._recognition_config.get("rec_path", "")))
         self.rec_template_dir_var = tk.StringVar(value=str(self._recognition_config.get("template_dir", "")))
+        self.base_lua_path_var = tk.StringVar(value=str(self._recognition_config.get("base_lua_path", "")))
         self.threshold_gun_var = tk.DoubleVar(value=float(self._recognition_config.get("threshold_gun", 0.5)))
         self.threshold_muzzle_var = tk.DoubleVar(value=float(self._recognition_config.get("threshold_muzzle", 0.25)))
         self.threshold_grip_var = tk.DoubleVar(value=float(self._recognition_config.get("threshold_grip", 0.3)))
@@ -119,7 +122,10 @@ class SettingsWindow:
             event: tk.BooleanVar(value=self._default_event_enabled.get(event, True))
             for event in _VOICE_EVENT_LABELS
         }
-        self._guns_by_ammo = _load_guns_from_lua()
+        from pubg_gun_control.config_manager import load_base_lua_path
+        self._guns_by_ammo = _load_guns_from_lua(
+            load_base_lua_path(self._recognition_config),
+        )
         self._checkbox_vars: dict[str, dict[str, tk.BooleanVar]] = {}
         self._init_all_checkbox_vars()
         self._create_window()
@@ -150,24 +156,42 @@ class SettingsWindow:
 
     def _create_window(self) -> None:
         self.window = tk.Toplevel(self.parent)
-        self.window.title("枪械配置")
+        self.window.title("设置")
         self.window.resizable(True, True)
         self.window.attributes("-topmost", True)
         self.window.grab_set()
-        self.window.geometry("650x800")
+        self.window.geometry("700x650")
 
         main_frame = ttk.Frame(self.window, padding=8)
         main_frame.pack(fill=tk.BOTH, expand=True)
-
-        self._create_overlay_section(main_frame, row=0)
-        self._create_recoil_hotkey_section(main_frame, row=1)
-        self._create_gun_section(main_frame, row=2)
-        self._create_voice_section(main_frame, row=3)
-        self._create_recognition_section(main_frame, row=4)
-        self._create_buttons(main_frame, row=5)
-
-        main_frame.rowconfigure(2, weight=1)
+        main_frame.rowconfigure(0, weight=1)
         main_frame.columnconfigure(0, weight=1)
+
+        notebook = ttk.Notebook(main_frame)
+        notebook.grid(row=0, column=0, sticky="nsew", pady=(0, 8))
+
+        basic_tab = ttk.Frame(notebook, padding=8)
+        gun_tab = ttk.Frame(notebook, padding=8)
+        rec_tab = ttk.Frame(notebook, padding=8)
+        voice_tab = ttk.Frame(notebook, padding=8)
+
+        notebook.add(basic_tab, text="基础")
+        notebook.add(gun_tab, text="枪械")
+        notebook.add(rec_tab, text="识别")
+        notebook.add(voice_tab, text="语音")
+
+        basic_tab.columnconfigure(0, weight=1)
+        gun_tab.columnconfigure(0, weight=1)
+        gun_tab.rowconfigure(0, weight=1)
+        rec_tab.columnconfigure(0, weight=1)
+        voice_tab.columnconfigure(0, weight=1)
+
+        self._create_overlay_section(basic_tab, row=0)
+        self._create_recoil_hotkey_section(basic_tab, row=1)
+        self._create_gun_section(gun_tab, row=0)
+        self._create_recognition_section(rec_tab, row=0)
+        self._create_voice_section(voice_tab, row=0)
+        self._create_buttons(main_frame, row=1)
 
         self.window.protocol("WM_DELETE_WINDOW", self._on_cancel)
 
@@ -552,15 +576,22 @@ class SettingsWindow:
         ttk.Label(frame, text="留空使用默认路径（exe目录下templates/）",
                   font=("Arial", 8), foreground="gray").grid(row=5, column=0, sticky="w")
 
-        ttk.Button(frame, text="导出GHUB脚本", command=self._on_export_lua).grid(
-            row=6, column=0, sticky="w", pady=(3, 0)
-        )
-        ttk.Button(frame, text="导出dofile脚本（编辑器保存自动生效）", command=self._on_export_dofile).grid(
-            row=6, column=1, columnspan=2, sticky="w", pady=(3, 0), padx=(10, 0)
-        )
+        base_frame = ttk.Frame(frame)
+        base_frame.grid(row=6, column=0, sticky="ew", pady=2)
+        ttk.Label(base_frame, text="基础脚本").pack(side=tk.LEFT)
+        ttk.Entry(base_frame, textvariable=self.base_lua_path_var, width=35).pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        ttk.Button(base_frame, text="浏览", command=self._on_browse_base_lua, width=5).pack(side=tk.LEFT)
+
+        ttk.Label(frame, text="留空使用默认路径（exe目录下1.2.2-2024.5.20.-GHUB.-github.lua）",
+                  font=("Arial", 8), foreground="gray").grid(row=7, column=0, sticky="w")
+
+        export_frame = ttk.Frame(frame)
+        export_frame.grid(row=8, column=0, sticky="w", pady=(3, 0))
+        ttk.Button(export_frame, text="导出GHUB脚本", command=self._on_export_lua).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(export_frame, text="导出dofile脚本（编辑器保存自动生效）", command=self._on_export_dofile).pack(side=tk.LEFT)
 
         thr_frame = ttk.LabelFrame(frame, text="识别阈值（0~1，越低越宽松）", padding=3)
-        thr_frame.grid(row=7, column=0, sticky="ew", pady=(5, 0))
+        thr_frame.grid(row=9, column=0, sticky="ew", pady=(5, 0))
 
         thr_items = [
             ("枪械", self.threshold_gun_var),
@@ -657,7 +688,8 @@ class SettingsWindow:
     def _sync_lua_canuse(self, gun_name: str, ammo: str, add: bool) -> None:
         """同步枪械变更到 Lua 脚本的 canUse"""
         from pubg_gun_control.lua_parser import LuaBallisticParser, BallisticConfig, GunCoefficients
-        lua_path = str(_get_project_root() / "1.2.2-2024.5.20.-GHUB.-github.lua")
+        from pubg_gun_control.config_manager import load_base_lua_path
+        lua_path = load_base_lua_path(self._recognition_config)
         try:
             parser = LuaBallisticParser()
             config = parser.parse(lua_path)
@@ -709,6 +741,7 @@ class SettingsWindow:
                 "hotkey": self.rec_hotkey_var.get().strip() or "f2",
                 "rec_path": self.rec_path_var.get().strip(),
                 "template_dir": self.rec_template_dir_var.get().strip(),
+                "base_lua_path": self.base_lua_path_var.get().strip(),
                 "threshold_gun": round(self.threshold_gun_var.get(), 2),
                 "threshold_muzzle": round(self.threshold_muzzle_var.get(), 2),
                 "threshold_grip": round(self.threshold_grip_var.get(), 2),
@@ -717,11 +750,29 @@ class SettingsWindow:
             }
             self.on_recognition_save(rec_cfg)
 
+    def _get_effective_base_lua_path(self) -> str:
+        from pubg_gun_control.config_manager import load_base_lua_path
+        configured = self.base_lua_path_var.get().strip()
+        if configured:
+            self._recognition_config["base_lua_path"] = configured
+        return load_base_lua_path(self._recognition_config)
+
+    def _on_browse_base_lua(self) -> None:
+        from tkinter import filedialog
+        path = filedialog.askopenfilename(
+            title="选择基础GHUB脚本",
+            defaultextension=".lua",
+            filetypes=[("Lua脚本", "*.lua")],
+            initialfile="1.2.2-2024.5.20.-GHUB.-github.lua",
+        )
+        if path:
+            self.base_lua_path_var.set(path)
+
     def _on_export_lua(self) -> None:
         from tkinter import filedialog, messagebox
         from pubg_gun_control.lua_generator import generate_auto_recognize_script
 
-        source = str(Path(__file__).resolve().parent.parent.parent / "1.2.2-2024.5.20.-GHUB.-github.lua")
+        source = self._get_effective_base_lua_path()
         rec_path = self.rec_path_var.get().strip()
         if not rec_path:
             rec_path = str(_get_project_root() / "pubg_rec.lua")
@@ -745,7 +796,7 @@ class SettingsWindow:
         from pubg_gun_control.lua_generator import generate_dofile_files
 
         project_root = _get_project_root()
-        source = str(project_root / "1.2.2-2024.5.20.-GHUB.-github.lua")
+        source = self._get_effective_base_lua_path()
         config_path = str(project_root / "pubg_config.lua")
         rec_path = self.rec_path_var.get().strip()
         if not rec_path:
@@ -760,9 +811,20 @@ class SettingsWindow:
         if not save_path:
             return
         try:
+            # 若 pubg_config.lua 比基础脚本新，说明编辑器保存后基础脚本未同步
+            # （或用户手动改过 pubg_config.lua），此时跳过覆盖以保护新增数据
+            regenerate_config = True
+            config_file = Path(config_path)
+            source_file = Path(source)
+            if config_file.exists() and source_file.exists():
+                if config_file.stat().st_mtime > source_file.stat().st_mtime:
+                    regenerate_config = False
+
             wrapper, config = generate_dofile_files(
-                source, config_output=config_path, wrapper_output=save_path, rec_path=rec_path,
+                source, config_output=config_path, wrapper_output=save_path,
+                rec_path=rec_path, regenerate_config=regenerate_config,
             )
+            skip_note = "" if regenerate_config else "\n\n注意：pubg_config.lua 比基础脚本新，已跳过覆盖以保留编辑器最新保存的数据。"
             messagebox.showinfo(
                 "导出成功",
                 f"包装脚本: {wrapper}\n"
@@ -770,7 +832,7 @@ class SettingsWindow:
                 f"使用方法:\n"
                 f"1. 将包装脚本粘贴到 GHUB\n"
                 f"2. 用编辑器修改弹道参数并保存\n"
-                f"3. CapsLock 开关时 GHUB 自动加载最新配置",
+                f"3. CapsLock 开关时 GHUB 自动加载最新配置{skip_note}",
             )
         except Exception as exc:
             messagebox.showerror("导出失败", str(exc))
