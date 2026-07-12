@@ -259,6 +259,7 @@ def generate_dofile_files(
     config_output: str | None = None,
     wrapper_output: str | None = None,
     rec_path: str | None = None,
+    regenerate_config: bool = True,
 ) -> tuple[str, str]:
     """生成 dofile 模式的两个文件：包装脚本 + 配置文件
 
@@ -270,6 +271,8 @@ def generate_dofile_files(
         config_output: 配置文件输出路径
         wrapper_output: 包装脚本输出路径
         rec_path: rec.lua 路径
+        regenerate_config: 是否重新生成配置文件。为 False 时跳过，
+            保留现有 pubg_config.lua（当编辑器保存后的配置比基础脚本新时使用）
 
     Returns:
         (wrapper_path, config_path)
@@ -286,7 +289,11 @@ def generate_dofile_files(
     effective_config = config_output.replace("\\", "\\\\")
 
     # --- 生成配置文件（纯数据，无函数定义/初始化代码）---
-    generate_config_only(source_path, config_output)
+    # 当 regenerate_config=False 时跳过，避免用旧的基础脚本覆盖编辑器刚保存的 pubg_config.lua
+    if regenerate_config:
+        generate_config_only(source_path, config_output)
+    else:
+        logger.info("跳过重新生成配置文件，保留现有: %s", config_output)
 
     with open(source_path, "r", encoding="utf-8") as f:
         source = f.read()
@@ -517,6 +524,7 @@ def generate_dofile_wrapper(
     effective_config = config_path.replace("\\", "\\\\")
     effective_rec = (rec_path or DEFAULT_REC_PATH).replace("\\", "\\\\")
 
-    source = str(_get_project_root() / "1.2.2-2024.5.20.-GHUB.-github.lua")
+    from pubg_gun_control.config_manager import load_base_lua_path
+    source = load_base_lua_path()
     wrapper, _ = generate_dofile_files(source, config_output=config_path, wrapper_output=output_path, rec_path=rec_path)
     return wrapper

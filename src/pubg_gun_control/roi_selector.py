@@ -104,7 +104,7 @@ class RoiSelector:
         self._scale_y = img_h / screen_h
 
         display_img = self._screenshot.resize((screen_w, screen_h), Image.LANCZOS)
-        self._tk_img = ImageTk.PhotoImage(display_img)
+        self._tk_img = ImageTk.PhotoImage(display_img, master=self._selection_root)
 
         self._canvas = tk.Canvas(self._selection_root, width=screen_w, height=screen_h, highlightthickness=0)
         self._canvas.pack()

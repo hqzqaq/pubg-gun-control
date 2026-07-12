@@ -28,6 +28,8 @@ from pubg_gun_control.config_manager import (
     load_recoil_hotkeys,
     load_recognition,
     save_recognition,
+    ensure_base_lua_script,
+    load_base_lua_path,
 )
 from pubg_gun_control.input_listener import InputListener
 from pubg_gun_control.overlay_window import OverlayWindow
@@ -35,6 +37,7 @@ from pubg_gun_control.voice_prompt import VoicePlayer
 from pubg_gun_control.settings_window import SettingsWindow
 from pubg_gun_control.tray_icon import TrayIcon
 from pubg_gun_control.rec_lua_writer import RecLuaWriter
+from pubg_gun_control.lua_parser import LuaBallisticParser
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
@@ -63,12 +66,16 @@ class GunControlApp:
         self.voice_player.volume = self._voice_volume
         self.voice_player.event_enabled = self._voice_event_enabled
 
+        ensure_base_lua_script()
         self._recognition_config: dict = load_recognition()
         self._recognizer = None
         rec_path = self._recognition_config.get("rec_path") or None
         self._rec_lua_writer = RecLuaWriter(rec_path)
         self._hotkey_listener = None
         self._editor_process: subprocess.Popen | None = None
+        # 枪名映射：{小写枪名: canUse表中的实际枪名}，用于识别结果大小写不敏感匹配
+        self._gun_name_map: dict[str, str] = {}
+        self._gun_name_map_mtime: float = 0.0
 
     def _on_gun_selected(self, gun_name: str) -> None:
         with self._lock:
@@ -117,12 +124,58 @@ class GunControlApp:
     }
     _SCOPE_DISPLAY: dict[int, str] = {1: "1倍", 2: "2倍", 3: "3倍", 4: "4倍", 6: "6倍"}
 
+    def _load_gun_name_map(self) -> None:
+        """从基础脚本加载枪名映射表（小写 → canUse 表实际枪名）。
+
+        模板文件名大小写可能与 lua 配置表不一致（如 K2.png vs pubg["k2"]），
+        识别结果需经此映射转换为 canUse 表中的实际枪名，GHUB 脚本才能找到弹道函数。
+        """
+        try:
+            parser = LuaBallisticParser()
+            recognition = load_recognition()
+            base_lua_path = load_base_lua_path(recognition)
+            config = parser.parse(base_lua_path)
+            self._gun_name_map = {
+                gun.name.lower(): gun.name
+                for ammo_guns in config.ammo_groups.values()
+                for gun in ammo_guns
+                if gun.mode != 0
+            }
+            self._gun_name_map_mtime = Path(base_lua_path).stat().st_mtime
+            logger.info("已加载 %d 把枪械名映射", len(self._gun_name_map))
+        except Exception as exc:
+            logger.warning("加载枪械名映射失败: %s", exc)
+            self._gun_name_map = {}
+
+    def _refresh_gun_name_map_if_stale(self) -> None:
+        """若基础脚本比上次加载新（编辑器保存过），则重新加载枪名映射。"""
+        try:
+            recognition = load_recognition()
+            base_lua_path = load_base_lua_path(recognition)
+            current_mtime = Path(base_lua_path).stat().st_mtime
+            if current_mtime != self._gun_name_map_mtime:
+                logger.info("基础脚本已更新，重新加载枪名映射")
+                self._load_gun_name_map()
+        except Exception:
+            pass
+
+    def _normalize_gun_name(self, gun: str) -> str:
+        """把识别结果转换为 canUse 表中的实际枪名（大小写不敏感）。"""
+        if not gun:
+            return gun
+        return self._gun_name_map.get(gun.lower(), gun)
+
     def _trigger_recognition(self) -> None:
         if not self._recognizer:
             return
+        # 基础脚本可能被编辑器修改，检查并刷新枪名映射
+        self._refresh_gun_name_map_if_stale()
         try:
             result = self._recognizer.recognize_all()
             gun = result.get("gun") or ""
+            # 与 canUse 表做大小写不敏感匹配，写入实际枪名
+            # 模板文件名大小写可能与 lua 配置表不一致（如 K2.png vs pubg["k2"]）
+            gun = self._normalize_gun_name(gun)
             scores = result.get("scores", {})
             self._rec_lua_writer.write(
                 gun=gun,
@@ -236,11 +289,32 @@ class GunControlApp:
             "Groza": 80, "MK47": 300, "Tommy Gun": 84, "Famas": 65, "MG3": 60,
         }
 
+        # 从当前基础脚本读取枪械列表与 interval，确保新增枪械可见
+        gun_intervals: dict[str, int] = dict(GUN_INTERVALS)
+        try:
+            parser = LuaBallisticParser()
+            # 设置界面保存后 self._recognition_config 可能不是最新，重新加载
+            recognition = load_recognition()
+            config = parser.parse(load_base_lua_path(recognition))
+            script_guns = [
+                gun
+                for ammo_guns in config.ammo_groups.values()
+                for gun in ammo_guns
+                if gun.mode != 0
+            ]
+            gun_intervals = {
+                gun.name: (gun.interval if gun.ballistic else GUN_INTERVALS.get(gun.name, 87))
+                for gun in script_guns
+            } or gun_intervals
+            logger.info("弹道分析从基础脚本读取到 %d 把枪械", len(gun_intervals))
+        except Exception as exc:
+            logger.warning("读取基础脚本枪械列表失败，回退到默认列表: %s", exc)
+
         root = tk.Tk()
         root.title("弹道分析")
         root.attributes("-topmost", True)
         root.grab_set()
-        root.geometry("480x350")
+        root.geometry("520x400")
 
         ttk.Label(root, text="从弹孔截图自动提取弹道数据", font=("Arial", 11, "bold")).pack(pady=(10, 5))
         ttk.Label(root, text="支持灰色/黑色弹孔（对墙射击）和绿色标记点", font=("Arial", 9), foreground="gray").pack()
@@ -284,65 +358,154 @@ class GunControlApp:
         name_frame = ttk.Frame(root)
         name_frame.pack(fill=tk.X, padx=10, pady=3)
         ttk.Label(name_frame, text="枪械名称:").pack(side=tk.LEFT)
-        gun_var = tk.StringVar(value="M416")
-        gun_combo = ttk.Combobox(name_frame, textvariable=gun_var, values=list(GUN_INTERVALS.keys()), width=15)
+        gun_names = list(gun_intervals.keys())
+        # 默认优先 M416，否则列表第一项；取值一律用 combobox.get()，
+        # 避免 Windows 下 ttk.Combobox 与 StringVar 不同步（界面显示 K2 但变量仍是 M416）
+        default_gun = "M416" if "M416" in gun_names else (gun_names[0] if gun_names else "")
+        gun_combo = ttk.Combobox(
+            name_frame,
+            values=gun_names,
+            width=15,
+            state="readonly" if gun_names else "normal",
+        )
+        if default_gun:
+            gun_combo.set(default_gun)
         gun_combo.pack(side=tk.LEFT, padx=5)
+
+        # 常见枪械整匣发数（扩容），用于把识别点规范到整匣
+        GUN_BULLET_COUNTS = {
+            "M416": 40, "Beryl M762": 40, "AKM": 40, "AUG": 40, "SCAR-L": 40,
+            "QBZ": 40, "G36C": 40, "ACE32": 40, "K2": 40, "Famas": 30,
+            "Groza": 40, "MK47": 30, "M16A4": 40, "M249": 75, "MG3": 75,
+            "UMP45": 40, "MP5K": 40, "Vector": 33, "Micro UZI": 35, "P90": 50,
+            "Tommy Gun": 50,
+        }
 
         param_frame = ttk.Frame(root)
         param_frame.pack(fill=tk.X, padx=10, pady=3)
         ttk.Label(param_frame, text="射击间隔(ms):").pack(side=tk.LEFT)
-        interval_var = tk.IntVar(value=87)
-        ttk.Spinbox(param_frame, textvariable=interval_var, from_=10, to=500, width=8).pack(side=tk.LEFT, padx=5)
+        default_interval = gun_intervals.get(default_gun, 87)
+        interval_var = tk.IntVar(value=default_interval)
+        # 保存控件引用：ttk.Spinbox 手动输入后 textvariable 不会立即同步，
+        # 需用 spinbox.get() 直接读取控件显示值
+        interval_spin = ttk.Spinbox(param_frame, textvariable=interval_var, from_=10, to=500, width=8)
+        interval_spin.pack(side=tk.LEFT, padx=5)
         ttk.Label(param_frame, text="缩放系数:").pack(side=tk.LEFT, padx=(10, 0))
         scale_var = tk.DoubleVar(value=1.0)
         ttk.Spinbox(param_frame, textvariable=scale_var, from_=0.1, to=3.0, increment=0.1, width=6, format="%.1f").pack(side=tk.LEFT, padx=5)
-        ttk.Label(param_frame, text="每段子弹数:").pack(side=tk.LEFT, padx=(10, 0))
-        seg_var = tk.IntVar(value=5)
-        ttk.Spinbox(param_frame, textvariable=seg_var, from_=1, to=50, width=5).pack(side=tk.LEFT, padx=5)
+
+        param_frame2 = ttk.Frame(root)
+        param_frame2.pack(fill=tk.X, padx=10, pady=3)
+        ttk.Label(param_frame2, text="整匣子弹数:").pack(side=tk.LEFT)
+        bullet_var = tk.IntVar(value=GUN_BULLET_COUNTS.get(default_gun, 40))
+        ttk.Spinbox(param_frame2, textvariable=bullet_var, from_=5, to=150, width=6).pack(side=tk.LEFT, padx=5)
+        ttk.Label(param_frame2, text="每段子弹数:").pack(side=tk.LEFT, padx=(10, 0))
+        seg_var = tk.IntVar(value=1)
+        ttk.Spinbox(param_frame2, textvariable=seg_var, from_=1, to=50, width=5).pack(side=tk.LEFT, padx=5)
+        ttk.Label(param_frame2, text="(1=逐发, 越大越平滑)", font=("Arial", 8), foreground="gray").pack(side=tk.LEFT)
+
+        def _selected_gun() -> str:
+            return (gun_combo.get() or "").strip()
 
         def on_gun_change(event=None):
-            gun = gun_var.get()
-            if gun in GUN_INTERVALS:
-                interval_var.set(GUN_INTERVALS[gun])
+            gun = _selected_gun()
+            if gun in gun_intervals:
+                interval_var.set(gun_intervals[gun])
+            if gun in GUN_BULLET_COUNTS:
+                bullet_var.set(GUN_BULLET_COUNTS[gun])
         gun_combo.bind("<<ComboboxSelected>>", on_gun_change)
 
-        ttk.Label(root, text="缩放系数: 1.0=原始像素值, 游戏灵敏度高可调大(1.5~2.0), 低可调小(0.5~0.8)  |  分段数: 每段包含的子弹数",
-                  font=("Arial", 8), foreground="gray").pack(padx=10, anchor="w")
+        ttk.Label(
+            root,
+            text=(
+                "整匣子弹数: 按真实弹匣规范弹道（如 K2 扩容 40）| "
+                "缩放系数: 1.0=原始像素 | "
+                "每段子弹数: 相邻几发取平均（1=逐发对齐原版脚本）"
+            ),
+            font=("Arial", 8),
+            foreground="gray",
+        ).pack(padx=10, anchor="w")
 
-        result_label = ttk.Label(root, text="", wraplength=450)
+        result_label = ttk.Label(root, text="", wraplength=500)
         result_label.pack(pady=8)
+
+        def _safe_filename(name: str) -> str:
+            """将枪械名转为可用作文件名的片段（保留中文/字母数字，其余替换为下划线）"""
+            cleaned = []
+            for ch in name.strip():
+                if ch.isalnum() or ("\u4e00" <= ch <= "\u9fff"):
+                    cleaned.append(ch)
+                elif ch in (" ", "-", "_", "."):
+                    cleaned.append("_")
+                else:
+                    cleaned.append("_")
+            result = "".join(cleaned).strip("_")
+            while "__" in result:
+                result = result.replace("__", "_")
+            return result or "ballistic"
 
         def on_analyze():
             path = file_var.get().strip()
-            gun = gun_var.get().strip()
-            interval = interval_var.get()
+            gun = _selected_gun()
+            # 直接从控件读取：手动输入后 textvariable 可能尚未同步
+            try:
+                interval = int(float(interval_spin.get()))
+            except (ValueError, TypeError):
+                interval = interval_var.get()
             scale = scale_var.get()
             max_seg = seg_var.get()
+            bullet_count = bullet_var.get()
             if not path:
                 result_label.config(text="请选择弹孔截图", foreground="red")
                 return
             if not gun:
                 result_label.config(text="请输入枪械名称", foreground="red")
                 return
-            result = analyze_spray_image(path, scale=scale, max_seg_count=max_seg)
+            if bullet_count < 2:
+                result_label.config(text="整匣子弹数至少为 2", foreground="red")
+                return
+            logger.info(
+                "弹道分析使用枪械: %s (interval=%s, scale=%s, seg=%s, bullets=%s)",
+                gun, interval, scale, max_seg, bullet_count,
+            )
+            result = analyze_spray_image(
+                path,
+                scale=scale,
+                max_seg_count=max_seg,
+                bullet_count=bullet_count,
+            )
             if not result:
                 result_label.config(text="分析失败: 未检测到足够的弹孔。尝试调整缩放系数或换一张更清晰的截图", foreground="red")
                 return
             lua_code = format_lua_function(gun, result["ballistic"], interval)
+            suggested_name = f"{_safe_filename(gun)}_ballistic.lua"
+            last_bullet = result["ballistic"][-1][0] if result["ballistic"] else 0
             result_label.config(
-                text=f"识别到 {result['shot_count']} 个弹孔, 生成 {len(result['ballistic'])} 段弹道",
+                text=(
+                    f"[{gun}] 识别 {result['shot_count']} 点 → 规范为 {result['bullet_count']} 发, "
+                    f"{len(result['ballistic'])} 段(末发={last_bullet}) → {suggested_name}"
+                ),
                 foreground="green",
             )
-            save_path = filedialog.asksaveasfilename(
-                title="保存弹道数据",
-                defaultextension=".lua",
-                filetypes=[("Lua脚本", "*.lua")],
-                initialfile=f"{gun}_ballistic.lua",
-            )
+            # 与选图一致：临时释放 grab，避免 Windows 下 initialfile 失效/对话框异常
+            root.grab_release()
+            try:
+                save_path = filedialog.asksaveasfilename(
+                    parent=root,
+                    title=f"保存弹道数据（{gun}）",
+                    defaultextension=".lua",
+                    filetypes=[("Lua脚本", "*.lua")],
+                    initialfile=suggested_name,
+                )
+            finally:
+                root.grab_set()
             if save_path:
                 with open(save_path, "w", encoding="utf-8") as f:
                     f.write(lua_code)
-                messagebox.showinfo("保存成功", f"弹道数据已保存到:\n{save_path}\n\n请在编辑器中将此函数合并到Lua脚本中")
+                messagebox.showinfo(
+                    "保存成功",
+                    f"[{gun}] 弹道数据已保存到:\n{save_path}\n\n请在编辑器中将此函数合并到Lua脚本中",
+                )
 
         ttk.Button(root, text="分析弹道", command=on_analyze, width=12).pack(pady=10)
         root.mainloop()
@@ -405,6 +568,8 @@ class GunControlApp:
         if new_enabled and not old_enabled:
             self._start_recognition()
         elif not new_enabled and old_enabled:
+            # 基础脚本可能被编辑器修改，重新加载枪名映射以保持同步
+            self._gun_name_map = {}
             if self._hotkey_listener:
                 self._hotkey_listener.stop()
                 self._hotkey_listener = None
@@ -447,6 +612,8 @@ class GunControlApp:
     def _start_recognition(self) -> None:
         if not self._recognition_config.get("enabled"):
             return
+        # 加载枪名映射，确保识别结果与 canUse 表枪名大小写一致
+        self._load_gun_name_map()
         rois = {}
         for key in ["weapon_roi", "muzzle_roi", "grip_roi", "stock_roi", "scope_roi"]:
             val = self._recognition_config.get(key, [])
@@ -545,10 +712,28 @@ class GunControlApp:
             capture_shared_attachment_templates, capture_scope_templates,
         )
 
+        # 从当前基础脚本读取枪械列表，确保设置界面新增的枪械也能被采集
+        gun_names: list[str] = []
+        try:
+            parser = LuaBallisticParser()
+            # 设置界面保存后 self._recognition_config 可能不是最新，重新加载
+            recognition = load_recognition()
+            config = parser.parse(load_base_lua_path(recognition))
+            gun_names = [
+                gun.name
+                for ammo_guns in config.ammo_groups.values()
+                for gun in ammo_guns
+                if gun.mode != 0
+            ]
+            logger.info("从基础脚本读取到 %d 把可采集枪械", len(gun_names))
+        except Exception as exc:
+            logger.warning("读取基础脚本枪械列表失败，回退到默认列表: %s", exc)
+
         logger.info("开始采集枪械模板...")
         captured = capture_gun_templates(
             weapon_roi=rois["weapon_roi"],
             save_fn=self._save_gun_template,
+            gun_names=gun_names if gun_names else None,
         )
         logger.info("枪械模板采集完成，共 %d 个", captured)
 
@@ -647,7 +832,7 @@ def main() -> int:
 
     if "--generate-lua" in sys.argv:
         from pubg_gun_control.lua_generator import generate_auto_recognize_script
-        source = str(PROJECT_ROOT / "1.2.2-2024.5.20.-GHUB.-github.lua")
+        source = load_base_lua_path()
         output = generate_auto_recognize_script(source)
         logger.info("已生成 GHUB 脚本: %s", output)
         return 0

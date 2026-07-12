@@ -128,10 +128,8 @@ class InputListener:
         self._last_auto_text = text
 
     def _update_gun_display(self, gun_name: str) -> None:
-        if self.aim_mode_enabled:
-            self.callback(self._last_auto_text)
-        else:
-            self.callback("无")
+        self.current_text = gun_name if self.aim_mode_enabled else "无"
+        self.callback(self.current_text)
 
     def _build_attachment_map(self, shortcuts: list[dict[str, str]]) -> None:
         self._attachment_map = {
