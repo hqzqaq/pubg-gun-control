@@ -226,16 +226,89 @@ def points_to_cumulative_y(points, scale=1.0):
     return result
 
 
+def _interpolate_along_path(pts, bullet_count: int):
+    """沿折线路径按弧长均匀插值到 bullet_count 个点（用于漏检补点）"""
+    coords = np.array(pts, dtype=np.float64)
+    diffs = np.diff(coords, axis=0)
+    seglen = np.sqrt((diffs ** 2).sum(axis=1))
+    cum = np.concatenate([[0.0], np.cumsum(seglen)])
+    total = float(cum[-1])
+    if total < 1e-6:
+        return [pts[0]] * bullet_count
+
+    targets = np.linspace(0.0, total, bullet_count)
+    out = []
+    for t in targets:
+        idx = int(np.searchsorted(cum, t, side="right") - 1)
+        idx = max(0, min(idx, len(pts) - 2))
+        t0, t1 = cum[idx], cum[idx + 1]
+        if t1 - t0 < 1e-9:
+            x, y = coords[idx]
+        else:
+            a = (t - t0) / (t1 - t0)
+            x = coords[idx, 0] * (1 - a) + coords[idx + 1, 0] * a
+            y = coords[idx, 1] * (1 - a) + coords[idx + 1, 1] * a
+        out.append((int(round(x)), int(round(y))))
+    return out
+
+
+def resample_points_to_count(points, bullet_count: int):
+    """将识别到的弹孔规范为指定整匣发数
+
+    - 多检（重叠孔/墙面噪点）：按射击顺序（y 从下到上）分组取质心合并
+    - 漏检：沿弹道折线弧长插值补点
+    - 刚好相等：原样返回
+
+    Args:
+        points: 原始弹孔 [(x, y), ...]
+        bullet_count: 目标子弹数（整匣，含第 1 发）
+
+    Returns:
+        长度为 bullet_count 的点列表（射击顺序）
+    """
+    if bullet_count < 2:
+        bullet_count = 2
+    if not points:
+        return []
+
+    # 图像坐标 y 向下增大：底部=先打的弹孔
+    pts = sorted(points, key=lambda p: p[1], reverse=True)
+    if len(pts) == 1:
+        return [pts[0]] * bullet_count
+    if len(pts) == bullet_count:
+        return pts
+
+    if len(pts) > bullet_count:
+        # 多检：把有序点均分成 bullet_count 组，每组取平均 → 一发一个代表点
+        xs = np.array([p[0] for p in pts], dtype=np.float64)
+        ys = np.array([p[1] for p in pts], dtype=np.float64)
+        out = []
+        for grp in np.array_split(np.arange(len(pts)), bullet_count):
+            if len(grp) == 0:
+                continue
+            out.append((int(round(xs[grp].mean())), int(round(ys[grp].mean()))))
+        # array_split 在整除时组数固定；若极端情况下不足则弧长补齐
+        if len(out) < bullet_count:
+            return _interpolate_along_path(out if out else pts, bullet_count)
+        return out[:bullet_count]
+
+    # 漏检：路径插值补到整匣
+    return _interpolate_along_path(pts, bullet_count)
+
+
 def segments_to_ballistic(points, scale=0.7, max_seg_count=5):
     """将弹孔坐标转换为 pubg-gun-control 格式的弹道数据
 
     输出格式: [(bullet_num, vertical_offset), ...]
-    与 Lua 脚本中 pubg["GunName"] 的 ballistic 表一致
+    与 Lua 脚本中 pubg["GunName"] 的 ballistic 表一致。
+
+    bullet_num 为该段结束时的累计发数；Lua 会把两段之间的发数
+    都用该段 offset。末段 bullet_num 必须等于总发数（points 长度）。
 
     Args:
-        points: 弹孔坐标列表
+        points: 弹孔坐标列表（建议已 resample 到整匣发数）
         scale: 坐标缩放系数
-        max_seg_count: 单段最大子弹数
+        max_seg_count: 每段平均合并的相邻发数（1=逐发，越大越平滑）
 
     Returns:
         list of (bullet_num, offset) 元组
@@ -243,63 +316,78 @@ def segments_to_ballistic(points, scale=0.7, max_seg_count=5):
     if len(points) < 2:
         return []
 
+    if max_seg_count < 1:
+        max_seg_count = 1
+
     raw_deltas = []
     for i in range(1, len(points)):
         dy = abs(points[i][1] - points[i - 1][1])
-        raw_deltas.append(round(dy * scale, 1))
+        raw_deltas.append(dy * scale)
 
-    segments = []
-    current_sum = raw_deltas[0]
-    current_count = 1
-
-    for i in range(1, len(raw_deltas)):
-        if current_count >= max_seg_count:
-            segments.append(round(current_sum / current_count, 1))
-            current_sum = raw_deltas[i]
-            current_count = 1
-        else:
-            current_sum += raw_deltas[i]
-            current_count += 1
-    segments.append(round(current_sum / current_count, 1))
-
-    result = [(1, 0)]
-    bullet_num = 2
-    for offset in segments:
-        result.append((bullet_num, offset))
-        bullet_num += 1
+    # 第 1 发无眼不压枪；其后 raw_deltas[i] 对应第 (i+2) 发的单发下压量
+    result = [(1, 0.0)]
+    i = 0
+    n = len(raw_deltas)
+    while i < n:
+        chunk = raw_deltas[i : i + max_seg_count]
+        avg = round(float(sum(chunk) / len(chunk)), 1)
+        end_bullet = 1 + i + len(chunk)  # 覆盖到第 end_bullet 发
+        result.append((end_bullet, avg))
+        i += len(chunk)
 
     return result
 
 
-def analyze_spray_image(image_path, scale=0.7, max_seg_count=5):
+def analyze_spray_image(image_path, scale=0.7, max_seg_count=5, bullet_count=None):
     """分析弹孔截图，返回弹道数据
 
     Args:
         image_path: 截图路径
         scale: 缩放系数
-        max_seg_count: 每段最大子弹数
+        max_seg_count: 每段合并的发数（平滑用）
+        bullet_count: 目标整匣发数；None 则用识别点数（不推荐）
 
     Returns:
-        dict: {"points": [...], "ballistic": [(num, offset), ...], "shot_count": int}
+        dict: {
+            "points": 重采样后的点,
+            "raw_points": 原始识别点,
+            "ballistic": [(num, offset), ...],
+            "shot_count": 原始识别数,
+            "bullet_count": 实际用于生成弹道的发数,
+        }
     """
     img = cv2.imread(image_path)
     if img is None:
         logger.error("无法读取图片: %s", image_path)
         return None
 
-    points = extract_green_points(img)
-    if len(points) < 2:
+    raw_points = extract_green_points(img)
+    if len(raw_points) < 2:
         logger.error("有效弹孔不足2个，无法分析")
         return None
 
+    if bullet_count is None or bullet_count < 2:
+        target_n = len(raw_points)
+    else:
+        target_n = int(bullet_count)
+
+    points = resample_points_to_count(raw_points, target_n)
     ballistic = segments_to_ballistic(points, scale, max_seg_count)
 
-    logger.info("识别到 %d 个弹孔，生成 %d 段弹道数据", len(points), len(ballistic))
+    logger.info(
+        "识别到 %d 个弹孔 → 规范为 %d 发，生成 %d 段弹道（末段发数=%s）",
+        len(raw_points),
+        target_n,
+        len(ballistic),
+        ballistic[-1][0] if ballistic else None,
+    )
 
     return {
         "points": points,
+        "raw_points": raw_points,
         "ballistic": ballistic,
-        "shot_count": len(points),
+        "shot_count": len(raw_points),
+        "bullet_count": target_n,
     }
 
 
