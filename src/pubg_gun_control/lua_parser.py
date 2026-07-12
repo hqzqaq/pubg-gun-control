@@ -91,11 +91,17 @@ _RE_ATTACH_ITEM = re.compile(
 )
 
 # 匹配配件子表起始: muzzle = {  /  grip = {  /  stock = {
-_RE_ATTACH_CAT = re.compile(r'^\s*(muzzle|grip|stock)\s*=\s*\{\s*$')
+# 注意: 行尾可能带注释(如 "muzzle = {   -- 枪口配件")，不能用 \s*$ 锚定行尾
+_RE_ATTACH_CAT = re.compile(r'^\s*(muzzle|grip|stock)\s*=\s*\{')
 
 # gunNoStock 块
 _RE_GUN_NO_STOCK_START = re.compile(r'^\s*gunNoStock\s*=\s*\{\s*$')
 _RE_GUN_NO_STOCK_ENTRY = re.compile(r'\[\s*"([^"]+)"\s*\]\s*=\s*true')
+
+# pubg["GunName"] = function (gunName)
+_RE_GUN_FUNC_START = re.compile(r'^\s*pubg\[\s*"([^"]+)"\s*\]\s*=\s*function\s*\(')
+_RE_INTERVAL = re.compile(r'interval\s*=\s*(\d+)')
+_RE_BALLISTIC_ROW = re.compile(r'\{\s*(\d+)\s*,\s*([\d.]+)\s*\}')
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +134,7 @@ class LuaBallisticParser:
         config.ammo_groups = self._parse_canuse(content)
         config.attachment_config = self._parse_attachment_config(content)
         config.gun_no_stock = self._parse_gun_no_stock(content)
+        self._merge_gun_functions(config, content)
         return config
 
     # ---- canUse ----
@@ -259,6 +266,66 @@ class LuaBallisticParser:
 
         return result
 
+    # ---- pubg["GunName"] 弹道函数 ----
+
+    def _merge_gun_functions(self, config: BallisticConfig, content: str) -> None:
+        """解析 pubg[gunName] 函数，将 interval/ballistic 合并到对应 GunCoefficients"""
+        gun_funcs = self.parse_gun_functions(content)
+        for ammo, guns in config.ammo_groups.items():
+            for gun in guns:
+                func = gun_funcs.get(gun.name)
+                if func is not None:
+                    gun.interval = func["interval"]
+                    gun.ballistic = func["ballistic"]
+
+    def parse_gun_functions(
+        self, content: str
+    ) -> dict[str, dict[str, Any]]:
+        """解析所有 pubg[gunName] 函数，返回 {gunName: {interval, ballistic}}"""
+        result: dict[str, dict[str, Any]] = {}
+        lines = content.splitlines()
+        in_func = False
+        func_depth = 0
+        current_gun: str | None = None
+        current_interval = 87
+        current_ballistic: list[tuple[int, float]] = []
+
+        for line in lines:
+            stripped = line.strip()
+            if not in_func:
+                match = _RE_GUN_FUNC_START.match(line)
+                if match:
+                    current_gun = match.group(1)
+                    current_interval = 87
+                    current_ballistic = []
+                    in_func = True
+                    func_depth = 1
+                continue
+
+            func_depth += line.count("function")
+            func_depth -= line.count("end")
+
+            interval_match = _RE_INTERVAL.search(line)
+            if interval_match:
+                current_interval = int(interval_match.group(1))
+
+            ballistic_match = _RE_BALLISTIC_ROW.search(line)
+            if ballistic_match:
+                current_ballistic.append(
+                    (int(ballistic_match.group(1)), float(ballistic_match.group(2)))
+                )
+
+            if in_func and stripped == "end" and func_depth <= 0:
+                if current_gun is not None:
+                    result[current_gun] = {
+                        "interval": current_interval,
+                        "ballistic": current_ballistic,
+                    }
+                in_func = False
+                current_gun = None
+
+        return result
+
     # ---- 序列化 ----
 
     def serialize(
@@ -292,6 +359,7 @@ class LuaBallisticParser:
             block_start_re=_RE_GUN_NO_STOCK_START,
             new_block=self._render_gun_no_stock(config),
         )
+        new_content = self._replace_gun_functions(new_content, config)
 
         if backup:
             self._backup(file_path)
@@ -447,6 +515,72 @@ class LuaBallisticParser:
             lines.append(f'\t["{name}"]{"".ljust(name_w - len(name))} = true,')
         lines.append("}")
         lines.append("")
+        return "\n".join(lines)
+
+    def _replace_gun_functions(self, content: str, config: BallisticConfig) -> str:
+        """删除旧 pubg[gunName] 函数，在文件末尾追加渲染后的函数"""
+        lines = content.splitlines(keepends=True)
+        # 收集所有函数块范围
+        blocks: list[tuple[int, int]] = []
+        in_func = False
+        func_depth = 0
+        start_idx: int | None = None
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if not in_func:
+                if _RE_GUN_FUNC_START.match(line):
+                    start_idx = i
+                    in_func = True
+                    func_depth = 1
+                continue
+            func_depth += line.count("function")
+            func_depth -= line.count("end")
+            if in_func and stripped == "end" and func_depth <= 0:
+                blocks.append((start_idx, i))
+                in_func = False
+                start_idx = None
+
+        # 从后往前删除，避免索引偏移
+        new_lines = list(lines)
+        for start, end in reversed(blocks):
+            # 删除函数块及后续空行
+            del_end = end
+            while del_end + 1 < len(new_lines) and new_lines[del_end + 1].strip() == "":
+                del_end += 1
+            del new_lines[start:del_end + 1]
+
+        # 确保末尾有换行
+        while new_lines and new_lines[-1].strip() == "":
+            new_lines.pop()
+        if new_lines and not new_lines[-1].endswith("\n"):
+            new_lines[-1] += "\n"
+
+        rendered = self._render_gun_functions(config)
+        if rendered:
+            new_lines.append("\n")
+            new_lines.append(rendered)
+
+        return "".join(new_lines)
+
+    def _render_gun_functions(self, config: BallisticConfig) -> str:
+        """渲染 canUse 中所有枪械的 pubg[gunName] 函数"""
+        lines: list[str] = []
+        for ammo, guns in config.ammo_groups.items():
+            for gun in guns:
+                if gun.mode == 0:
+                    continue
+                lines.append(f'pubg["{gun.name}"] = function (gunName)')
+                lines.append("")
+                lines.append("\treturn pubg.execOptions(gunName, {")
+                lines.append(f"\t\tinterval = {gun.interval},")
+                lines.append("\t\tballistic = {")
+                for num, offset in gun.ballistic:
+                    lines.append(f"\t\t\t{{{num}, {offset}}},")
+                lines.append("\t\t}")
+                lines.append("\t})")
+                lines.append("")
+                lines.append("end")
+                lines.append("")
         return "\n".join(lines)
 
     # ---- 备份 ----

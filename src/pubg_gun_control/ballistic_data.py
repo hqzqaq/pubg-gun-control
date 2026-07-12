@@ -71,6 +71,8 @@ class GunCoefficients:
 
     8 个系数顺序对应 lua canUse 表中 8 个数值列：
       自身 / 下蹲 / 屏息 / 裸配 / 满配 / 趴姿 / 2 倍镜 / 3 倍镜
+
+    interval 与 ballistic 对应 pubg["GunName"] 函数中的射击间隔与逐发弹道。
     """
 
     name: str
@@ -83,13 +85,21 @@ class GunCoefficients:
     prone: float
     scope2x: float
     scope3x: float
+    interval: int = 87
+    ballistic: list[tuple[int, float]] = field(default_factory=list)
 
     COEF_FIELDS: tuple[str, ...] = (
         "coef", "crouch", "breath", "bare", "full", "prone", "scope2x", "scope3x",
     )
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        return {
+            "name": self.name,
+            "mode": self.mode,
+            **{f: getattr(self, f) for f in self.COEF_FIELDS},
+            "interval": self.interval,
+            "ballistic": [list(p) for p in self.ballistic],
+        }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "GunCoefficients":
@@ -97,6 +107,8 @@ class GunCoefficients:
             name=str(data["name"]),
             mode=int(data["mode"]),
             **{f: float(data[f]) for f in cls.COEF_FIELDS},
+            interval=int(data.get("interval", 87)),
+            ballistic=[(int(p[0]), float(p[1])) for p in data.get("ballistic", [])],
         )
 
     @classmethod
