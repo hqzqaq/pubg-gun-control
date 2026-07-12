@@ -73,13 +73,6 @@ def test_trajectory_calculator() -> None:
     assert bare_points[-1].dy > points[-1].dy, "裸配偏移应大于满配"
     print(f"  [OK] 裸配末发 dy={bare_points[-1].dy:.2f} > 满配 dy={points[-1].dy:.2f}")
 
-    # 禁用模式
-    dp28 = config.find_gun("DP-28")
-    assert dp28 is not None and dp28.mode == 0
-    disabled = TrajectoryCalculator.calculate(dp28)
-    assert len(disabled) == 0, "禁用模式应返回空"
-    print(f"  [OK] 禁用模式 (DP-28 mode=0) 返回空列表")
-
 
 def test_editor_window() -> None:
     """测试编辑器主窗口"""

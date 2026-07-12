@@ -113,7 +113,8 @@ def test_input_listener_lock_intercept(_mock_get_key_state: MagicMock) -> None:
         ],
     )
 
-    # 进入压枪开启状态
+    # 进入压枪开启状态（先模拟自动识别到一把枪）
+    listener.set_auto_text("MP5K")
     listener._on_key_press(Key.caps_lock)
     assert listener.current_text != "无", "未成功进入压枪开启状态"
     current_gun = listener.current_text

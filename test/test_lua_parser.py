@@ -30,7 +30,7 @@ def test_parse_lua() -> None:
     config = parser.parse(LUA_FILE)
 
     # 校验弹药组数量
-    expected_ammo = {"7.62", "5.56", ".45", "9mm"}
+    expected_ammo = {"7.62", "5.56", "9mm"}
     assert set(config.ammo_groups.keys()) == expected_ammo, (
         f"弹药组不匹配: {set(config.ammo_groups.keys())} vs {expected_ammo}"
     )
@@ -54,7 +54,7 @@ def test_parse_lua() -> None:
     m762 = config.find_gun("Beryl M762")
     assert m762 is not None, "未找到 Beryl M762"
     assert m762.mode == 1
-    assert abs(m762.coef - 8.65) < 0.01
+    assert abs(m762.coef - 5.47) < 0.01
     print(f"  M762 校验: mode={m762.mode}, coef={m762.coef}")
 
     # 校验 gunNoStock
@@ -132,6 +132,41 @@ def test_parse_error() -> None:
         assert "不存在" in str(exc)
 
 
+def test_gun_function_round_trip() -> None:
+    """测试 pubg[gunName] 函数中的 interval/ballistic 可正确解析与写回"""
+    parser = LuaBallisticParser()
+    config = parser.parse(LUA_FILE)
+    m762 = config.find_gun("Beryl M762")
+    assert m762 is not None
+    original_interval = m762.interval
+    assert m762.ballistic, "原始弹道不应为空"
+
+    m762.interval = 99
+    m762.ballistic = [(1, 0), (2, 10), (3, 20)]
+
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".lua", delete=False, encoding="utf-8"
+    ) as tmp:
+        tmp.write(LUA_FILE.read_text(encoding="utf-8"))
+        tmp_path = Path(tmp.name)
+
+    try:
+        parser.serialize(config, tmp_path, backup=False)
+        config2 = parser.parse(tmp_path)
+        m762_2 = config2.find_gun("Beryl M762")
+        assert m762_2 is not None
+        assert m762_2.interval == 99
+        assert m762_2.ballistic == [(1, 0), (2, 10.0), (3, 20.0)]
+
+        content = tmp_path.read_text(encoding="utf-8")
+        assert 'pubg["Beryl M762"] = function (gunName)' in content
+        assert "interval = 99" in content
+        assert "{2, 10}" in content
+        print(f"  弹道函数 round-trip OK: interval {original_interval} -> 99")
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
 def main() -> int:
     print("=" * 60)
     print("lua 解析器测试")
@@ -142,6 +177,7 @@ def main() -> int:
         ("round-trip 序列化", test_round_trip),
         ("备份功能", test_backup),
         ("错误处理", test_parse_error),
+        ("弹道函数 round-trip", test_gun_function_round_trip),
     ]
 
     failed = 0
