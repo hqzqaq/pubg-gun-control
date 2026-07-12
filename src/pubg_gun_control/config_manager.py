@@ -15,6 +15,7 @@ from typing import Any
 
 
 _CONFIG_FILENAME = "config.json"
+_BASE_LUA_FILENAME = "1.2.2-2024.5.20.-GHUB.-github.lua"
 
 
 def _get_project_root() -> Path:
@@ -24,10 +25,50 @@ def _get_project_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 
-def _get_config_path() -> Path:
+def _get_exe_dir() -> Path:
+    """获取 exe 所在目录（开发环境返回项目根目录）。"""
     if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent / _CONFIG_FILENAME
-    return _get_project_root() / _CONFIG_FILENAME
+        return Path(sys.executable).parent
+    return _get_project_root()
+
+
+def _get_config_path() -> Path:
+    return _get_exe_dir() / _CONFIG_FILENAME
+
+
+def get_default_base_lua_path() -> str:
+    """返回默认基础脚本路径（exe/项目目录下）。"""
+    return str(_get_exe_dir() / _BASE_LUA_FILENAME)
+
+
+def _get_bundled_base_lua_path() -> Path | None:
+    """获取 PyInstaller 打包时内嵌的基础脚本路径；未打包返回 None。"""
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS) / _BASE_LUA_FILENAME
+    return None
+
+
+def ensure_base_lua_script() -> str:
+    """确保基础脚本存在于 exe/项目目录，不存在则从打包资源复制。
+
+    Returns:
+        实际使用的基础脚本路径。
+    """
+    target = Path(get_default_base_lua_path())
+    if target.exists():
+        return str(target)
+
+    bundled = _get_bundled_base_lua_path()
+    if bundled and bundled.exists():
+        try:
+            target.write_bytes(bundled.read_bytes())
+            logger = logging.getLogger(__name__)
+            logger.info("已释放基础脚本到: %s", target)
+            return str(target)
+        except OSError:
+            logging.getLogger(__name__).exception("复制基础脚本失败")
+
+    return str(target)
 
 
 def get_default_config() -> list[dict[str, str]]:
@@ -316,6 +357,7 @@ _DEFAULT_RECOGNITION: dict[str, Any] = {
     "hotkey": "f2",
     "rec_path": "",
     "template_dir": "",
+    "base_lua_path": "",
     "threshold_gun": 0.5,
     "threshold_muzzle": 0.25,
     "threshold_grip": 0.3,
@@ -352,6 +394,18 @@ def save_recognition(recognition: dict[str, Any]) -> None:
     config_path = _get_config_path()
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def load_base_lua_path(recognition: dict[str, Any] | None = None) -> str:
+    """返回有效的基础脚本路径，优先使用识别配置中的 base_lua_path。"""
+    if recognition is None:
+        recognition = load_recognition()
+    configured = recognition.get("base_lua_path", "")
+    if isinstance(configured, str) and configured.strip():
+        path = Path(configured.strip())
+        if path.exists():
+            return str(path)
+    return ensure_base_lua_script()
 
 
 # ---------------------------------------------------------------------------
