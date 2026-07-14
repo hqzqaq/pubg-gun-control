@@ -23,6 +23,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 # 无头模式：在没有显示器的环境运行（CI）
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -115,9 +116,12 @@ def test_editor_window() -> None:
         assert m762.mode == 2
         print(f"  [OK] 模式切换为 2 (连点)")
 
-        # 保存
-        window._on_save_lua()
-        app.processEvents()
+        # 保存（patch 掉同步到基础脚本和 pubg_config.lua，只写临时文件）
+        with patch.object(window, '_sync_to_base_lua', return_value=""), \
+             patch('pubg_gun_control.editor_ui.main_window._resolve_project_root',
+                   return_value=Path(tempfile.gettempdir())):
+            window._on_save_lua()
+            app.processEvents()
         # 重新解析
         parser = LuaBallisticParser()
         config2 = parser.parse(tmp_path)

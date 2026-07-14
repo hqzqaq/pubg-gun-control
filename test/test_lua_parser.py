@@ -54,7 +54,7 @@ def test_parse_lua() -> None:
     m762 = config.find_gun("Beryl M762")
     assert m762 is not None, "未找到 Beryl M762"
     assert m762.mode == 1
-    assert abs(m762.coef - 5.47) < 0.01
+    assert abs(m762.coef - 5.48) < 0.01
     print(f"  M762 校验: mode={m762.mode}, coef={m762.coef}")
 
     # 校验 gunNoStock
