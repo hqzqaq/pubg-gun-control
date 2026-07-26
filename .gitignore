@@ -19,3 +19,6 @@ pubg_config.lua
 pubg_rec.lua
 src/pubg_gun_control/generated/
 back.lua
+
+# lua_parser 写前自动备份
+*.bak
