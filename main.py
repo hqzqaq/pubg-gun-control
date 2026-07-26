@@ -38,10 +38,90 @@ from pubg_gun_control.settings_window import SettingsWindow
 from pubg_gun_control.tray_icon import TrayIcon
 from pubg_gun_control.rec_lua_writer import RecLuaWriter
 from pubg_gun_control.lua_parser import LuaBallisticParser
+from pubg_gun_control.ballistic_data import DEFAULT_INTERVAL
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
 logger = logging.getLogger(__name__)
+
+
+def _infer_weapon_type(ammo: str) -> str:
+    """从弹药口径推断武器类型：9mm / .45 → smg，其余 → ar。
+
+    用于在运行时根据基础脚本的 canUse 分组动态构建枪械→武器类型映射，
+    替代 recognizer.py 中硬编码的 GUN_TYPE_MAP（新增枪械时无需手动同步）。
+    """
+    if ammo in ("9mm", ".45"):
+        return "smg"
+    return "ar"
+
+
+def _show_ballistic_preview(parent: tk.Misc, gun: str, result: dict) -> None:
+    """在新窗口中显示弹道分析可视化预览。
+
+    - 红色圆点：原始识别点（raw_points）
+    - 蓝色叉号 + 虚线：重采样后的规范点（points）
+    - 绿色点划线：段分割位置（ballistic 中每段起始发数对应的 Y 坐标）
+
+    用户关闭预览窗口后才继续后续的保存流程。
+    """
+    import matplotlib
+    matplotlib.use("TkAgg")
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+    raw = result.get("raw_points", [])
+    resampled = result.get("points", [])
+    ballistic = result.get("ballistic", [])
+    shot_count = result.get("shot_count", 0)
+    bullet_count = result.get("bullet_count", 0)
+
+    win = tk.Toplevel(parent)
+    win.title(f"弹道分析预览 - {gun}")
+    win.geometry("720x520")
+
+    fig, ax = plt.subplots(figsize=(7.2, 5.2), dpi=100)
+
+    if raw:
+        xs_raw = [p[0] for p in raw]
+        ys_raw = [p[1] for p in raw]
+        ax.scatter(xs_raw, ys_raw, c="red", s=40, marker="o",
+                   label=f"原始识别点 ({len(raw)})", zorder=3, edgecolors="darkred")
+
+    if resampled:
+        xs_res = [p[0] for p in resampled]
+        ys_res = [p[1] for p in resampled]
+        ax.scatter(xs_res, ys_res, c="blue", s=30, marker="x",
+                   label=f"重采样点 ({len(resampled)})", zorder=4)
+        ax.plot(xs_res, ys_res, "b--", alpha=0.4, linewidth=1, zorder=2)
+
+    # 段分割线（ballistic 中每段起始发数对应的 Y 坐标）
+    # ballistic 第 0 项是 (1, 0) 表示第 1 发基准，跳过；其余每项 (num, offset) 标记新段起点
+    for num, _offset in ballistic[1:]:
+        if 1 <= num <= len(resampled):
+            ax.axhline(y=resampled[num - 1][1], color="green", linestyle=":",
+                       alpha=0.5, linewidth=1)
+
+    ax.invert_yaxis()  # 屏幕坐标 Y 向下
+    ax.set_title(f"{gun} - 识别 {shot_count} 点 → 规范为 {bullet_count} 发", fontsize=12)
+    ax.set_xlabel("X 坐标")
+    ax.set_ylabel("Y 坐标（向下为正）")
+    ax.legend(loc="best", fontsize=9)
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+
+    canvas = FigureCanvasTkAgg(fig, master=win)
+    canvas.draw()
+    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+    def on_close() -> None:
+        plt.close(fig)
+        win.destroy()
+
+    win.protocol("WM_DELETE_WINDOW", on_close)
+    win.transient(parent)
+    win.grab_set()
+    parent.wait_window(win)
 
 
 class GunControlApp:
@@ -76,6 +156,8 @@ class GunControlApp:
         # 枪名映射：{小写枪名: canUse表中的实际枪名}，用于识别结果大小写不敏感匹配
         self._gun_name_map: dict[str, str] = {}
         self._gun_name_map_mtime: float = 0.0
+        # 枪械→武器类型映射（从基础脚本 canUse 分组动态推断，替代硬编码 GUN_TYPE_MAP）
+        self._gun_type_map: dict[str, str] = {}
 
     def _on_gun_selected(self, gun_name: str) -> None:
         with self._lock:
@@ -129,6 +211,8 @@ class GunControlApp:
 
         模板文件名大小写可能与 lua 配置表不一致（如 K2.png vs pubg["k2"]），
         识别结果需经此映射转换为 canUse 表中的实际枪名，GHUB 脚本才能找到弹道函数。
+
+        同时构建枪械→武器类型映射（基于弹药组推断），供识别引擎选择对应武器类型的枪口模板。
         """
         try:
             parser = LuaBallisticParser()
@@ -141,11 +225,20 @@ class GunControlApp:
                 for gun in ammo_guns
                 if gun.mode != 0
             }
+            # 同时构建枪械→武器类型映射（基于弹药组推断）
+            # 9mm / .45 → smg，其余 → ar；新增枪械时无需手动维护 GUN_TYPE_MAP
+            self._gun_type_map = {
+                gun.name: _infer_weapon_type(ammo)
+                for ammo, guns in config.ammo_groups.items()
+                for gun in guns
+                if gun.mode != 0
+            }
             self._gun_name_map_mtime = Path(base_lua_path).stat().st_mtime
             logger.info("已加载 %d 把枪械名映射", len(self._gun_name_map))
         except Exception as exc:
             logger.warning("加载枪械名映射失败: %s", exc)
             self._gun_name_map = {}
+            self._gun_type_map = {}
 
     def _refresh_gun_name_map_if_stale(self) -> None:
         """若基础脚本比上次加载新（编辑器保存过），则重新加载枪名映射。"""
@@ -303,7 +396,7 @@ class GunControlApp:
                 if gun.mode != 0
             ]
             gun_intervals = {
-                gun.name: (gun.interval if gun.ballistic else GUN_INTERVALS.get(gun.name, 87))
+                gun.name: (gun.interval if gun.ballistic else GUN_INTERVALS.get(gun.name, DEFAULT_INTERVAL))
                 for gun in script_guns
             } or gun_intervals
             logger.info("弹道分析从基础脚本读取到 %d 把枪械", len(gun_intervals))
@@ -384,7 +477,7 @@ class GunControlApp:
         param_frame = ttk.Frame(root)
         param_frame.pack(fill=tk.X, padx=10, pady=3)
         ttk.Label(param_frame, text="射击间隔(ms):").pack(side=tk.LEFT)
-        default_interval = gun_intervals.get(default_gun, 87)
+        default_interval = gun_intervals.get(default_gun, DEFAULT_INTERVAL)
         interval_var = tk.IntVar(value=default_interval)
         # 保存控件引用：ttk.Spinbox 手动输入后 textvariable 不会立即同步，
         # 需用 spinbox.get() 直接读取控件显示值
@@ -487,6 +580,9 @@ class GunControlApp:
                 ),
                 foreground="green",
             )
+            # 弹出可视化预览：用户确认识别点合理后再保存
+            # 关闭预览窗口（wait_window 返回）后才继续执行后续保存对话框
+            _show_ballistic_preview(root, gun, result)
             # 与选图一致：临时释放 grab，避免 Windows 下 initialfile 失效/对话框异常
             root.grab_release()
             try:
@@ -632,7 +728,9 @@ class GunControlApp:
                 "stock": self._recognition_config.get("threshold_stock", 0.35),
                 "scope": self._recognition_config.get("threshold_scope", 0.35),
             }
-            self._recognizer = GunRecognizer(rois, template_dir, thresholds)
+            self._recognizer = GunRecognizer(
+                rois, template_dir, thresholds, gun_type_map=self._gun_type_map
+            )
             if not self._recognizer.has_gun_templates():
                 logger.warning("未找到枪械模板，请先运行 python main.py --init")
                 return

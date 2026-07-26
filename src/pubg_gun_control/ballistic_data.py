@@ -12,7 +12,28 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
+from enum import IntEnum
 from typing import Any
+
+
+# ---------------------------------------------------------------------------
+# 常量
+# ---------------------------------------------------------------------------
+
+# 默认射击间隔（毫秒）：canUse 表中未填写时使用
+DEFAULT_INTERVAL: int = 87
+
+
+class GunMode(IntEnum):
+    """枪械启用模式（对应 lua canUse 表第 1 列 mode）。
+
+    作为 IntEnum，可直接与 int 比较（gun.mode == 0 等价于 gun.mode == GunMode.DISABLED），
+    调用方也可显式使用枚举提升可读性。
+    """
+
+    DISABLED = 0  # 禁用：不出现在识别列表中，不生成弹道函数
+    ENABLED = 1  # 启用：正常使用
+    BURST = 2    # 连点模式
 
 
 # ---------------------------------------------------------------------------
@@ -85,7 +106,7 @@ class GunCoefficients:
     prone: float
     scope2x: float
     scope3x: float
-    interval: int = 87
+    interval: int = DEFAULT_INTERVAL
     ballistic: list[tuple[int, float]] = field(default_factory=list)
 
     COEF_FIELDS: tuple[str, ...] = (

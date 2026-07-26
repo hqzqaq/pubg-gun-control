@@ -87,17 +87,6 @@ function pubg.applyRecResult()
         end
     end
 end
-
-function pubg.loadRecResult()
-    local success, err = pcall(function()
-        dofile(REC_PATH)
-    end)
-    if not success then
-        OutputLogMessage("[AUTO] 读取识别结果失败: %s\\n", tostring(err))
-        return false
-    end
-    return true
-end
 -- ====== 自动识别函数结束 ======
 """
 

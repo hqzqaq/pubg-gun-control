@@ -39,7 +39,7 @@ _VOICE_EVENT_LABELS: dict[str, str] = {
 
 _ATTACH_COLS = ("muzzle", "grip", "stock")
 _ATTACH_LABELS = {"muzzle": "枪口", "grip": "握把", "stock": "枪托"}
-_AMMO_LABELS = {"7.62": "7.62mm", "5.56": "5.56mm", "9mm": "9mm"}
+_AMMO_LABELS = {"7.62": "7.62mm", "5.56": "5.56mm", "9mm": "9mm", ".45": "0.45mm"}
 
 
 def _load_guns_from_lua(lua_path: str | None = None) -> dict[str, list[str]]:
@@ -51,11 +51,12 @@ def _load_guns_from_lua(lua_path: str | None = None) -> dict[str, list[str]]:
         parser = LuaBallisticParser()
         config = parser.parse(lua_path)
         result: dict[str, list[str]] = {}
+        # 保留原始 ammo key（如 ".45"），写回 lua 时才能匹配原 canUse 分组
+        # UI 显示由 _AMMO_LABELS 做映射，避免数据层与显示层混淆
         for ammo, guns in config.ammo_groups.items():
-            key = "9mm" if ammo == ".45" else ammo
-            if key not in result:
-                result[key] = []
-            result[key].extend(g.name for g in guns)
+            if ammo not in result:
+                result[ammo] = []
+            result[ammo].extend(g.name for g in guns)
         return result
     except Exception:
         logger.warning("无法解析 Lua 脚本，使用默认枪械列表")

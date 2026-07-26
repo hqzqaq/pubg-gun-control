@@ -484,7 +484,6 @@ class BallisticEditorWindow(QMainWindow):
 
     def _apply_preset(self, preset: BallisticPreset) -> None:
         """把预设的配置应用到当前界面"""
-        self._config = preset.config
         # 复制：避免修改预设数据
         self._config = BallisticConfig.from_dict(preset.config.to_dict())
         self._list_panel.load_config(self._config)

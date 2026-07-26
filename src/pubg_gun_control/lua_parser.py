@@ -25,6 +25,7 @@ import shutil
 from pathlib import Path
 
 from .ballistic_data import (
+    DEFAULT_INTERVAL,
     AttachmentCategory,
     AttachmentItem,
     BallisticConfig,
@@ -287,7 +288,7 @@ class LuaBallisticParser:
         in_func = False
         func_depth = 0
         current_gun: str | None = None
-        current_interval = 87
+        current_interval = DEFAULT_INTERVAL
         current_ballistic: list[tuple[int, float]] = []
 
         for line in lines:
@@ -296,7 +297,7 @@ class LuaBallisticParser:
                 match = _RE_GUN_FUNC_START.match(line)
                 if match:
                     current_gun = match.group(1)
-                    current_interval = 87
+                    current_interval = DEFAULT_INTERVAL
                     current_ballistic = []
                     in_func = True
                     func_depth = 1

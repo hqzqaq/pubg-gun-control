@@ -62,7 +62,8 @@ class GunRecognizer:
     """截图识别枪械名称和配件（全部基于模板匹配）"""
 
     def __init__(self, rois: dict[str, list[int]], template_dir: str | None = None,
-                 thresholds: dict[str, float] | None = None) -> None:
+                 thresholds: dict[str, float] | None = None,
+                 gun_type_map: dict[str, str] | None = None) -> None:
         self._rois = rois
         self._template_dir = Path(template_dir) if template_dir else TEMPLATE_DIR
         self._thresholds = {
@@ -70,6 +71,11 @@ class GunRecognizer:
         }
         if thresholds:
             self._thresholds.update(thresholds)
+        # 枪械→武器类型映射：优先使用外部传入的（从基础脚本动态推断），
+        # 回退到模块常量 GUN_TYPE_MAP（兼容旧调用方）
+        self._gun_type_map: dict[str, str] = (
+            dict(gun_type_map) if gun_type_map else dict(GUN_TYPE_MAP)
+        )
         self._gun_templates: dict[str, np.ndarray] = {}
         self._attachment_templates: dict[str, dict[str, dict[str, np.ndarray]]] = {}
         self._scope_templates: dict[str, tuple[np.ndarray, int]] = {}
@@ -172,8 +178,8 @@ class GunRecognizer:
         return name
 
     def get_weapon_type(self, gun_name: str | None) -> str:
-        if gun_name and gun_name in GUN_TYPE_MAP:
-            return GUN_TYPE_MAP[gun_name]
+        if gun_name and gun_name in self._gun_type_map:
+            return self._gun_type_map[gun_name]
         return "ar"
 
     def recognize_attachment(self, roi_image: np.ndarray, category: str, weapon_type: str = "ar") -> int:
@@ -188,24 +194,12 @@ class GunRecognizer:
 
         gray = cv2.cvtColor(roi_image, cv2.COLOR_BGR2GRAY) if len(roi_image.shape) == 3 else roi_image
 
-        thresholds = {"muzzle": 0.25, "grip": 0.3, "stock": 0.35}
-        name, score = self._match_template(gray, type_templates, threshold=thresholds.get(category, 0.35))
+        # 阈值统一从 self._thresholds 取，避免硬编码
+        name, score = self._match_template(gray, type_templates, threshold=self._thresholds.get(category, 0.35))
         logger.debug("配件 %s (type=%s): best=%s score=%.3f roi=%s",
                      category, weapon_type, name, score, gray.shape)
         if name:
             options = {"muzzle": MUZZLE_OPTIONS, "grip": GRIP_OPTIONS, "stock": STOCK_OPTIONS}[category]
-            if name in options:
-                return options.index(name) + 1
-        return 1
-
-        gray = cv2.cvtColor(roi_image, cv2.COLOR_BGR2GRAY) if len(roi_image.shape) == 3 else roi_image
-
-        name, score = self._match_template(gray, type_templates, threshold=0.6)
-        if name:
-            if category == "muzzle":
-                options = MUZZLE_OPTIONS_SMG if weapon_type == "smg" else MUZZLE_OPTIONS
-            else:
-                options = {"grip": GRIP_OPTIONS, "stock": STOCK_OPTIONS}[category]
             if name in options:
                 return options.index(name) + 1
         return 1

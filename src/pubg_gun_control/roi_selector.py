@@ -10,6 +10,7 @@ ROI 区域选择器
 """
 
 import logging
+import time
 import tkinter as tk
 from typing import Callable
 
@@ -82,6 +83,10 @@ class RoiSelector:
         self._ready_root.destroy()
 
     def _on_capture_hotkey(self, event: tk.Event) -> None:
+        # 先隐藏准备窗口再截屏，避免截到自身残影（destroy 是异步的）
+        self._ready_root.withdraw()
+        self._ready_root.update()
+        time.sleep(0.3)
         self._ready_root.destroy()
         self._capture_and_select()
 
@@ -123,13 +128,34 @@ class RoiSelector:
         self._canvas.bind("<B1-Motion>", self._on_drag)
         self._canvas.bind("<ButtonRelease-1>", self._on_release)
         self._selection_root.bind("<Escape>", self._on_skip)
+        # BackSpace：回退到上一个区域，允许重新框选（选错时无需全部重来）
+        self._selection_root.bind("<BackSpace>", self._on_undo)
 
         self._selection_root.mainloop()
 
     def _get_instruction(self) -> str:
         key = self._roi_keys[self._current_index]
         label = ROI_LABELS[key]
-        return f"[{self._current_index + 1}/{len(self._roi_keys)}] 请框选: {label}"
+        # 非首个区域时提示可回退
+        hint = "（按 BackSpace 回退到上一个）" if self._current_index > 0 else ""
+        return f"[{self._current_index + 1}/{len(self._roi_keys)}] 请框选: {label}{hint}"
+
+    def _on_undo(self, event: tk.Event) -> None:
+        """回退到上一个区域，删除已选坐标并允许重新框选。"""
+        if self._current_index == 0:
+            # 没有上一个区域可回退
+            return
+        self._current_index -= 1
+        key = self._roi_keys[self._current_index]
+        # 删除已选的区域坐标
+        if key in self._rois:
+            del self._rois[key]
+        # 清理 canvas 上的当前矩形
+        if self._rect_id:
+            self._canvas.delete(self._rect_id)
+            self._rect_id = None
+        self._label.config(text=self._get_instruction())
+        logger.info("回退到 %s，可重新框选", key)
 
     def _on_press(self, event: tk.Event) -> None:
         self._start_x = event.x
