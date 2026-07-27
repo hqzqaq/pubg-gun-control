@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 import time
+import tkinter as tk
 from pathlib import Path
 
 import keyboard
@@ -371,7 +372,6 @@ class GunControlApp:
         threading.Thread(target=self._run_ballistic_analysis, daemon=True).start()
 
     def _run_ballistic_analysis(self) -> None:
-        import tkinter as tk
         from tkinter import filedialog, messagebox, ttk
         from pubg_gun_control.ballistic_analyzer import analyze_spray_image, format_lua_function
 
