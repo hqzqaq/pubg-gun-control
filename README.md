@@ -74,7 +74,7 @@
 
 完成后即可正常使用。之后如需新增枪械/弹道，见 [进阶：新增枪械与弹道](#进阶新增枪械与弹道)。
 
-<!-- 截图：流程总览图（可选，画一张流程图） -->
+![PUBG Gun Control 使用流程](docs/images/overall-flow.svg)
 
 ---
 
@@ -253,6 +253,8 @@ DPI: 1400
 
 <!-- 截图：游戏内 Tab 显示武器 + F2 识别效果 -->
 
+![F2 自动识别数据流](docs/images/f2-recognition-flow.svg)
+
 #### 4.5 宏脚本的枪械配置（传统组合键，作为备用方案）
 
 如果你仍习惯使用组合键切换，lua 脚本中的 `G_bind` 配置了鼠标按键与枪械的映射关系：
@@ -410,6 +412,8 @@ uv run pyinstaller pubg_gun_control.spec --clean
 ## 进阶：新增枪械与弹道
 
 当默认枪械列表不够用时，可以新增枪械并为其添加弹道。
+
+![新增枪械与弹道流程](docs/images/add-gun-flow.svg)
 
 ### 1. 新增枪械
 
