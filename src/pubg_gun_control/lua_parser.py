@@ -58,7 +58,9 @@ class BallisticParseError(Exception):
 # 匹配 ammo 分组起始: ["7.62"] = {
 _RE_AMMO_OPEN = re.compile(r'\[\s*"([^"]+)"\s*\]\s*=\s*\{')
 
-# 匹配单条枪械行: { "Name", 1, 8.65, 0.82, 1.40, 1.25, 1.95, 0.30, 1.24, 0.75},
+# 匹配单条枪械行: { "Name", 1, 8.65, 0.82, 1.40, 1.25, 1.95, 0.30, 1.24, 0.75, 1.0, 1.0},
+# 10 个数值列: coef/crouch/breath/bare/full/prone/scope2x/scope3x/scope4x/scope6x
+# 兼容旧版 8 列格式（无 4 倍/6 倍镜系数）：后两列可选
 _RE_GUN_ROW = re.compile(
     r'\{\s*"([^"]+)"\s*,\s*'                       # 枪名
     r'(\d+)\s*,\s*'                                  # mode
@@ -70,6 +72,7 @@ _RE_GUN_ROW = re.compile(
     r'([\d.]+)\s*,\s*'                               # prone
     r'([\d.]+)\s*,\s*'                               # scope2x
     r'([\d.]+)\s*'                                   # scope3x
+    r'(?:\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*)?'        # scope4x, scope6x（可选，兼容旧版）
     r'\s*\},?'
 )
 
@@ -188,7 +191,12 @@ class LuaBallisticParser:
                 if gun_match:
                     name = gun_match.group(1)
                     mode = int(gun_match.group(2))
+                    # 前 8 个系数（coef..scope3x）必填，后 2 个（scope4x/scope6x）可选
                     numbers = [float(gun_match.group(i)) for i in range(3, 11)]
+                    # 兼容 10 列格式：若匹配到 scope4x/scope6x 则追加
+                    if gun_match.group(11) is not None and gun_match.group(12) is not None:
+                        numbers.append(float(gun_match.group(11)))
+                        numbers.append(float(gun_match.group(12)))
                     try:
                         gun = GunCoefficients.from_lua_row(name, mode, numbers)
                         result[current_ammo].append(gun)

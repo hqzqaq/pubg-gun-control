@@ -15,8 +15,6 @@ import tkinter as tk
 from pathlib import Path
 
 import keyboard
-from pynput import keyboard as pynput_keyboard
-
 from pubg_gun_control.config_manager import (
     load_config,
     save_config,
@@ -26,18 +24,26 @@ from pubg_gun_control.config_manager import (
     load_voice_volume,
     load_voice_event_enabled,
     load_overlay_visible,
+    load_overlay_position,
+    save_overlay_position,
     load_recoil_hotkeys,
     load_recognition,
     save_recognition,
+    load_crosshair_config,
+    save_crosshair_config,
     ensure_base_lua_script,
     load_base_lua_path,
+    load_stance,
+    save_stance,
 )
 from pubg_gun_control.input_listener import InputListener
 from pubg_gun_control.overlay_window import OverlayWindow
+from pubg_gun_control.crosshair_window import CrosshairWindow
 from pubg_gun_control.voice_prompt import VoicePlayer
 from pubg_gun_control.settings_window import SettingsWindow
 from pubg_gun_control.tray_icon import TrayIcon
 from pubg_gun_control.rec_lua_writer import RecLuaWriter
+from pubg_gun_control.stance_tracker import STAND, StanceTracker
 from pubg_gun_control.lua_parser import LuaBallisticParser
 from pubg_gun_control.ballistic_data import DEFAULT_INTERVAL
 
@@ -129,10 +135,11 @@ class GunControlApp:
     """PUBG枪械控制应用主类"""
 
     def __init__(self) -> None:
-        self.overlay = OverlayWindow()
         self.voice_player = VoicePlayer()
         self.input_listener: InputListener | None = None
         self.tray_icon: TrayIcon | None = None
+        self.crosshair: CrosshairWindow | None = None
+        self.overlay: OverlayWindow | None = None
         self._running = False
         self._lock = threading.Lock()
         self._shortcuts: list[dict[str, str]] = load_config()
@@ -142,6 +149,9 @@ class GunControlApp:
         self._voice_volume: int = load_voice_volume()
         self._voice_event_enabled: dict[str, bool] = load_voice_event_enabled()
         self._overlay_visible: bool = load_overlay_visible()
+        self._overlay_position: tuple[int, int] = load_overlay_position()
+        self.overlay: OverlayWindow = OverlayWindow(self._overlay_position)
+        self._crosshair_config: dict = load_crosshair_config()
         self._recoil_hotkeys: dict[str, list[str]] = load_recoil_hotkeys()
         self.voice_player.enabled = self._voice_enabled
         self.voice_player.volume = self._voice_volume
@@ -152,13 +162,26 @@ class GunControlApp:
         self._recognizer = None
         rec_path = self._recognition_config.get("rec_path") or None
         self._rec_lua_writer = RecLuaWriter(rec_path)
-        self._hotkey_listener = None
+        # 姿态跟踪：监听 C/Z 等按键推断站立/蹲下/趴下，写入 rec.lua 供压枪宏读取
+        self._stance_config: dict = load_stance()
+        self._stance_tracker = StanceTracker(
+            enabled=bool(self._stance_config.get("enabled", True)),
+            crouch_key=str(self._stance_config.get("crouch_key", "c")),
+            prone_key=str(self._stance_config.get("prone_key", "z")),
+            break_keys=self._stance_config.get("break_keys") or ["space"],
+            require_focus=bool(self._stance_config.get("require_focus", True)),
+            on_change=self._on_stance_changed,
+        )
         self._editor_process: subprocess.Popen | None = None
         # 枪名映射：{小写枪名: canUse表中的实际枪名}，用于识别结果大小写不敏感匹配
         self._gun_name_map: dict[str, str] = {}
         self._gun_name_map_mtime: float = 0.0
         # 枪械→武器类型映射（从基础脚本 canUse 分组动态推断，替代硬编码 GUN_TYPE_MAP）
         self._gun_type_map: dict[str, str] = {}
+        # 上一次识别成功的枪名，识别失败时保留此结果不覆盖 rec.lua
+        self._last_rec_gun: str = ""
+        # tab 键触发的延时识别线程（避免重复触发）
+        self._tab_recognition_thread: threading.Thread | None = None
 
     def _on_gun_selected(self, gun_name: str) -> None:
         with self._lock:
@@ -199,6 +222,33 @@ class GunControlApp:
                 for cat in ("muzzle", "grip", "stock"):
                     self.overlay.update_attachment(f"{cat}:无")
         logger.info("已重置所有状态")
+
+    def _on_stance_saved(self, stance_cfg: dict) -> None:
+        """设置窗口保存姿态配置：落盘并即时应用到运行中的跟踪器"""
+        self._stance_config = dict(stance_cfg)
+        save_stance(self._stance_config)
+        self._stance_tracker.set_enabled(bool(stance_cfg.get("enabled", True)))
+        self._stance_tracker.update_keys(
+            str(stance_cfg.get("crouch_key", "c")),
+            str(stance_cfg.get("prone_key", "z")),
+            stance_cfg.get("break_keys") or ["space"],
+        )
+        logger.info("姿态配置已更新: %s", stance_cfg)
+
+    def _on_stance_changed(self, stance: str) -> None:
+        """姿态变化回调：写入 rec.lua 并同步浮窗显示。
+
+        由输入监听线程调用，因此只做线程安全的操作。
+        """
+        self._rec_lua_writer.update_stance(stance)
+        with self._lock:
+            if self.overlay.is_created():
+                self.overlay.update_stance(stance)
+        logger.info("姿态变更为: %s", stance)
+
+    def _on_reset_stance(self) -> None:
+        """托盘菜单：把姿态手动纠正回站立"""
+        self._stance_tracker.reset()
 
     _ATTACHMENT_DISPLAY: dict[str, dict[int, str]] = {
         "muzzle": {1: "无", 2: "补偿器", 3: "消焰器", 4: "消音器", 5: "制退器"},
@@ -259,9 +309,19 @@ class GunControlApp:
             return gun
         return self._gun_name_map.get(gun.lower(), gun)
 
-    def _trigger_recognition(self) -> None:
+    def _trigger_recognition(self, preserve_on_failure: bool = True) -> bool:
+        """触发一次截图识别并写入 rec.lua。
+
+        Args:
+            preserve_on_failure: 识别失败（枪名为空）时是否保留上一次成功的结果。
+                True 时若本次未识别到枪械，则不写入 rec.lua，保留上次结果；
+                False 时写入空枪名（rec_gun = ""）。
+
+        Returns:
+            是否识别到枪械（gun 非空）
+        """
         if not self._recognizer:
-            return
+            return False
         # 基础脚本可能被编辑器修改，检查并刷新枪名映射
         self._refresh_gun_name_map_if_stale()
         try:
@@ -271,6 +331,15 @@ class GunControlApp:
             # 模板文件名大小写可能与 lua 配置表不一致（如 K2.png vs pubg["k2"]）
             gun = self._normalize_gun_name(gun)
             scores = result.get("scores", {})
+
+            # 识别失败处理：保留上一次成功的结果，不覆盖 rec.lua
+            if not gun:
+                if preserve_on_failure and self._last_rec_gun:
+                    logger.info("[识别] 本次未识别到枪械，保留上次结果: %s", self._last_rec_gun)
+                    return False
+                # 无上次结果或要求写入空结果：写入 rec_gun = ""
+                self._last_rec_gun = ""
+
             self._rec_lua_writer.write(
                 gun=gun,
                 muzzle=result.get("muzzle", 1),
@@ -278,11 +347,19 @@ class GunControlApp:
                 stock=result.get("stock", 1),
                 scope=result.get("scope", 1),
             )
+            if gun:
+                self._last_rec_gun = gun
             with self._lock:
                 if self.overlay.is_created():
                     display_text = gun if gun else "---"
                     if self.input_listener:
                         self.input_listener.set_auto_text(display_text)
+                        # 压枪模式开启时同步刷新中间枪械名，避免与左下角 REC 状态不一致
+                        # 不能走 callback 链（_on_gun_selected 会再次获取 _lock 导致死锁），
+                        # 直接在锁内更新 overlay 与 input_listener.current_text
+                        if gun and self.input_listener.aim_mode_enabled:
+                            self.input_listener.current_text = gun
+                            self.overlay.update_text(gun)
                     for cat in ("muzzle", "grip", "stock"):
                         idx = result.get(cat, 1)
                         label = self._ATTACHMENT_DISPLAY.get(cat, {}).get(idx, "?")
@@ -300,8 +377,10 @@ class GunControlApp:
                         grip_label, scores.get("grip", 0),
                         stock_label, scores.get("stock", 0),
                         scope_label, scores.get("scope", 0))
+            return bool(gun)
         except Exception:
             logger.exception("识别异常")
+            return False
 
     def _on_exit(self) -> None:
         self.stop()
@@ -324,6 +403,12 @@ class GunControlApp:
             on_recognition_save=self._on_recognition_saved,
             overlay_visible=self._overlay_visible,
             recoil_hotkeys=self._recoil_hotkeys,
+            overlay=self.overlay,
+            on_overlay_position_saved=self._on_overlay_position_saved,
+            crosshair_config=self._crosshair_config,
+            on_crosshair_save=self._on_crosshair_save,
+            stance_config=self._stance_config,
+            on_stance_save=self._on_stance_saved,
         )
 
     def _on_open_editor(self) -> None:
@@ -606,6 +691,34 @@ class GunControlApp:
         ttk.Button(root, text="分析弹道", command=on_analyze, width=12).pack(pady=10)
         root.mainloop()
 
+    def _on_overlay_position_saved(self, x: int, y: int) -> None:
+        """浮窗位置固定回调：更新内存并持久化到 config.json。"""
+        self._overlay_position = (int(x), int(y))
+        save_overlay_position(*self._overlay_position)
+        logger.info("浮窗位置已保存到配置: %s", self._overlay_position)
+
+    def _on_crosshair_save(self, cfg: dict) -> None:
+        """准星配置保存回调：持久化并立即应用到准星窗口与按键监听。"""
+        self._crosshair_config = cfg
+        save_crosshair_config(cfg)
+        if self.crosshair is not None:
+            self.crosshair.apply_config(cfg)
+        if self.input_listener is not None:
+            hold_key = ""
+            enable_key = ""
+            disable_key = ""
+            if cfg.get("enabled"):
+                if cfg.get("mode") == "hold":
+                    hold_key = str(cfg.get("hold_key", "")).strip().lower()
+                enable_key = str(cfg.get("hotkey_enable", "1")).strip().lower()
+                disable_key = str(cfg.get("hotkey_disable", "2")).strip().lower()
+            self.input_listener.update_crosshair_hold_key(hold_key)
+            self.input_listener.update_crosshair_hotkeys(enable_key, disable_key)
+        logger.info("准星配置已保存: enabled=%s mode=%s shape=%s size=%s 开=%s 关=%s",
+                    cfg.get("enabled"), cfg.get("mode"),
+                    cfg.get("shape"), cfg.get("size"),
+                    cfg.get("hotkey_enable"), cfg.get("hotkey_disable"))
+
     def _on_settings_saved(
         self,
         shortcuts: list[dict[str, str]],
@@ -634,6 +747,7 @@ class GunControlApp:
             voice_event_enabled=voice_event_enabled,
             overlay_visible=overlay_visible,
             recoil_hotkeys=recoil_hotkeys,
+            overlay_position=self._overlay_position,
         )
         if self.overlay.is_created():
             if overlay_visible:
@@ -666,16 +780,17 @@ class GunControlApp:
         elif not new_enabled and old_enabled:
             # 基础脚本可能被编辑器修改，重新加载枪名映射以保持同步
             self._gun_name_map = {}
-            if self._hotkey_listener:
-                self._hotkey_listener.stop()
-                self._hotkey_listener = None
+            self._recognizer = None
+            if self.input_listener:
+                self.input_listener.update_recognition_hotkey("")
             if self.overlay.is_created():
                 self.overlay.update_recognition_status("")
         elif new_enabled and template_changed and self._recognizer:
-            if self._hotkey_listener:
-                self._hotkey_listener.stop()
-                self._hotkey_listener = None
+            self._recognizer = None
             self._start_recognition()
+        # 热键变更时同步到 input_listener（enabled 不变时三个分支都不进入）
+        if new_enabled and self.input_listener:
+            self.input_listener.update_recognition_hotkey(rec_cfg.get("hotkey", "f2"))
 
     def start(self) -> None:
         self._running = True
@@ -685,11 +800,35 @@ class GunControlApp:
             self.overlay.show()
         else:
             self.overlay.hide()
+
+        self.crosshair = CrosshairWindow(self.overlay.root)
+        self.crosshair.apply_config(self._crosshair_config)
+
+        # 长按模式/开关快捷键由输入监听器转发事件，仅主开关启用时生效
+        crosshair_hold_key = ""
+        crosshair_enable_key = ""
+        crosshair_disable_key = ""
+        if self._crosshair_config.get("enabled"):
+            if self._crosshair_config.get("mode") == "hold":
+                crosshair_hold_key = str(self._crosshair_config.get("hold_key", "")).strip().lower()
+            crosshair_enable_key = str(self._crosshair_config.get("hotkey_enable", "1")).strip().lower()
+            crosshair_disable_key = str(self._crosshair_config.get("hotkey_disable", "2")).strip().lower()
+
         self.input_listener = InputListener(
             self._on_gun_selected, self._on_lock_changed, self._on_scope_changed,
             self._on_attachment_changed, self._on_reset, self._shortcuts, self._attachments,
             self._gun_attachments, voice_callback=self.voice_player.play,
             recoil_hotkeys=self._recoil_hotkeys,
+            recognition_hotkey=self._recognition_config.get("hotkey", "f2"),
+            on_recognition_trigger=self._on_recognition_trigger,
+            crosshair_hold_key=crosshair_hold_key,
+            crosshair_show_callback=self.crosshair.show_crosshair,
+            crosshair_hide_callback=self.crosshair.hide_crosshair,
+            crosshair_enable_key=crosshair_enable_key,
+            crosshair_disable_key=crosshair_disable_key,
+            crosshair_enable_callback=lambda: self.crosshair.set_enabled_override(True),
+            crosshair_disable_callback=lambda: self.crosshair.set_enabled_override(False),
+            stance_tracker=self._stance_tracker,
         )
         self.input_listener.start()
 
@@ -698,6 +837,7 @@ class GunControlApp:
             on_init_roi=self._on_init_roi,
             on_capture_templates=self._on_capture_templates,
             on_ballistic_analysis=self._on_ballistic_analysis,
+            on_reset_stance=self._on_reset_stance,
         )
         self.tray_icon.start()
 
@@ -735,21 +875,66 @@ class GunControlApp:
                 logger.warning("未找到枪械模板，请先运行 python main.py --init")
                 return
             hotkey = self._recognition_config.get("hotkey", "f2")
-            self._hotkey_listener = pynput_keyboard.Listener(on_press=self._on_hotkey)
-            self._hotkey_listener.start()
+            # 识别触发通过 input_listener 的回调，不再创建独立的键盘监听器
+            # （两个 pynput keyboard.Listener 会导致 Windows 钩子链冲突）
+            if self.input_listener:
+                self.input_listener.update_recognition_hotkey(hotkey)
             logger.info("自动识别已启动，快捷键: %s", hotkey)
         except Exception:
             logger.exception("启动自动识别失败")
 
-    def _on_hotkey(self, key) -> None:
+    def _on_recognition_trigger(self, trigger_type: str) -> None:
+        """input_listener 转发的识别触发回调（单键盘监听器方案，避免钩子冲突）。
+
+        Args:
+            trigger_type: "tab" 表示 Tab 键延时识别，"hotkey" 表示 F2 即时识别
+        """
         try:
-            hotkey_name = self._recognition_config.get("hotkey", "f2")
-            key_name = getattr(key, "name", None) or getattr(key, "char", None) or str(key)
-            if key_name.lower() != hotkey_name.lower():
+            if not self._recognizer:
                 return
-            self._trigger_recognition()
+            if trigger_type == "tab":
+                self._trigger_tab_recognition()
+            else:
+                # F2 即时识别用线程异步执行，避免阻塞 input_listener 的键盘钩子线程
+                threading.Thread(
+                    target=self._trigger_recognition,
+                    kwargs={"preserve_on_failure": True},
+                    daemon=True,
+                ).start()
         except Exception:
             logger.exception("识别异常")
+
+    def _trigger_tab_recognition(self) -> None:
+        """tab 键触发的延时自动识别：1 秒后识别，失败再等 1 秒重试一次。
+
+        - 识别失败保留上次结果（preserve_on_failure=True）
+        - 同一时刻只允许一个 tab 识别线程运行，避免重复触发
+        - 线程为 daemon，程序退出时自动结束
+        """
+        # 已有 tab 识别线程在运行，跳过本次触发
+        if self._tab_recognition_thread is not None and self._tab_recognition_thread.is_alive():
+            logger.debug("[识别] tab 自动识别已在进行中，跳过本次触发")
+            return
+        if not self._recognizer:
+            return
+
+        def _run() -> None:
+            # 首次延迟 0.2s 触发，失败后按 0.5s/1s 间隔重试，共 3 次
+            delays = [0.2, 0.5, 1.0]
+            for i, delay in enumerate(delays):
+                time.sleep(delay)
+                if not self._running:
+                    return
+                success = self._trigger_recognition(preserve_on_failure=True)
+                if success:
+                    return
+                if i < len(delays) - 1:
+                    logger.info("[识别] tab 第 %d 次识别失败，%s 秒后重试", i + 1, delays[i + 1])
+            logger.info("[识别] tab 自动识别 %d 次均失败，停止重试", len(delays))
+
+        self._tab_recognition_thread = threading.Thread(target=_run, daemon=True)
+        self._tab_recognition_thread.start()
+        logger.info("[识别] tab 键触发延时自动识别（0.2 秒后开始）")
 
     def stop(self) -> None:
         self._running = False
@@ -762,13 +947,13 @@ class GunControlApp:
                 self._editor_process.kill()
             self._editor_process = None
 
-        if self._hotkey_listener:
-            self._hotkey_listener.stop()
-            self._hotkey_listener = None
-
         if self.input_listener:
             self.input_listener.stop()
             self.input_listener = None
+
+        if self.crosshair is not None:
+            self.crosshair.close()
+            self.crosshair = None
 
         if self.overlay.is_created():
             self.overlay.close()
@@ -810,6 +995,9 @@ class GunControlApp:
             capture_shared_attachment_templates, capture_scope_templates,
         )
 
+        # 模板目录：传给采集向导，用于预加载已有模板状态
+        template_dir = self._recognition_config.get("template_dir") or None
+
         # 从当前基础脚本读取枪械列表，确保设置界面新增的枪械也能被采集
         gun_names: list[str] = []
         try:
@@ -832,6 +1020,7 @@ class GunControlApp:
             weapon_roi=rois["weapon_roi"],
             save_fn=self._save_gun_template,
             gun_names=gun_names if gun_names else None,
+            template_dir=template_dir,
         )
         logger.info("枪械模板采集完成，共 %d 个", captured)
 
@@ -843,6 +1032,7 @@ class GunControlApp:
                     roi=muzzle_roi,
                     save_fn=self._save_muzzle_template,
                     weapon_type=weapon_type,
+                    template_dir=template_dir,
                 )
                 logger.info("%s 枪口配件模板采集完成，共 %d 个", type_label, cnt)
 
@@ -855,6 +1045,7 @@ class GunControlApp:
                     roi=roi,
                     category=category,
                     save_fn=self._save_shared_attachment_template,
+                    template_dir=template_dir,
                 )
                 logger.info("%s 模板采集完成，共 %d 个", category, cnt)
 
@@ -864,6 +1055,7 @@ class GunControlApp:
             cnt = capture_scope_templates(
                 roi=scope_roi,
                 save_fn=self._save_scope_template,
+                template_dir=template_dir,
             )
             logger.info("倍镜模板采集完成，共 %d 个", cnt)
 
@@ -954,6 +1146,7 @@ def main() -> int:
     logger.info("  --generate-lua 生成包含自动识别的 GHUB 脚本")
     logger.info("自动识别:")
     logger.info("  初始化后，按快捷键(默认F2)截图识别当前武器并写入 rec.lua")
+    logger.info("  按下 Tab 键后 0.2 秒自动触发识别，失败按 0.5/1 秒重试，共 3 次（保留上次结果）")
     logger.info("使用方法：")
     logger.info("  - 大写锁定开启时：")
     logger.info("    LAlt + 鼠标前进键 = MP5k")

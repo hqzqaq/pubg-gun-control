@@ -51,11 +51,18 @@ def test_parse_lua() -> None:
     )
 
     # 校验特定枪的系数
+    # 注意：不要写死具体数值——弹道标定后会变，写死会变成脆断测试
     m762 = config.find_gun("Beryl M762")
     assert m762 is not None, "未找到 Beryl M762"
     assert m762.mode == 1
-    assert abs(m762.coef - 5.48) < 0.01
-    print(f"  M762 校验: mode={m762.mode}, coef={m762.coef}")
+    assert 0 < m762.coef < 20, f"自身系数异常: {m762.coef}"
+    # 下蹲 / 趴姿系数是乘数，必须落在 (0, 1] 才有意义（0 会让压枪量归零）
+    assert 0 < m762.crouch <= 1, f"下蹲系数异常: {m762.crouch}"
+    assert 0 < m762.prone <= 1, f"趴姿系数异常: {m762.prone}"
+    print(
+        f"  M762 校验: mode={m762.mode}, coef={m762.coef}, "
+        f"crouch={m762.crouch}, prone={m762.prone}"
+    )
 
     # 校验 gunNoStock
     assert config.gun_no_stock.get("Beryl M762") is True

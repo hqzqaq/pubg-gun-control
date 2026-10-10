@@ -62,6 +62,15 @@ _TYPE_LOCK: Final[str] = "lock"
 _TYPE_SCOPE: Final[str] = "scope"
 _TYPE_ATTACHMENT: Final[str] = "attachment"
 _TYPE_REC: Final[str] = "rec"
+_TYPE_STANCE: Final[str] = "stance"
+_TYPE_POSITION: Final[str] = "position"
+_TYPE_DRAG: Final[str] = "drag"
+
+_STANCE_DISPLAY: Final[dict[str, str]] = {
+    "stand": "站",
+    "crouch": "蹲",
+    "prone": "趴",
+}
 
 _user32 = ctypes.windll.user32
 _kernel32 = ctypes.windll.kernel32
@@ -90,16 +99,22 @@ class OverlayWindow:
     WS_CHILD = _WS_CHILD
     WS_POPUP = _WS_POPUP
 
-    def __init__(self) -> None:
+    def __init__(self, position: tuple[int, int] | None = None) -> None:
         self.root: tk.Tk | None = None
         self.label: tk.Label | None = None
         self.scope_label: tk.Label | None = None
+        self.stance_label: tk.Label | None = None
+        self.info_frame: tk.Frame | None = None
         self.current_text: str = ""
         self.locked: bool = False
         self.scope_mode: int = 1
         self.attachment_texts: dict[str, str] = {"muzzle": "", "grip": "", "stock": ""}
         self.rec_status: str = ""
-        self._pending: queue.Queue[tuple[str, str | bool | int]] = queue.Queue()
+        self.stance: str = "stand"
+        self._position: tuple[int, int] = position if position is not None else (_WINDOW_X, _WINDOW_Y)
+        self._draggable: bool = False
+        self._drag_offset: tuple[int, int] = (0, 0)
+        self._pending: queue.Queue[tuple[str, str | bool | int | tuple[int, int] | None]] = queue.Queue()
         self._topmost_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._cached_hwnd: int = 0
@@ -134,6 +149,8 @@ class OverlayWindow:
         _user32.BringWindowToTop.restype = wintypes.BOOL
         _user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(ctypes.c_ulong)]
         _user32.GetWindowThreadProcessId.restype = ctypes.c_ulong
+        _user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+        _user32.GetWindowRect.restype = wintypes.BOOL
         _user32.SetLayeredWindowAttributes.argtypes = [
             wintypes.HWND, ctypes.c_ulong, wintypes.BYTE, ctypes.c_ulong,
         ]
@@ -284,7 +301,8 @@ class OverlayWindow:
         self.root.attributes("-topmost", True)
         self.root.attributes("-transparentcolor", _COLOR_TRANSPARENT)
 
-        self.root.geometry(f"{_WINDOW_WIDTH}x{_WINDOW_HEIGHT}+{_WINDOW_X}+{_WINDOW_Y}")
+        x, y = self._position
+        self.root.geometry(f"{_WINDOW_WIDTH}x{_WINDOW_HEIGHT}+{x}+{y}")
 
         self.root.configure(bg=_COLOR_BG_DEFAULT)
 
@@ -325,8 +343,13 @@ class OverlayWindow:
             lbl.place(relx=0.82, rely=0.15 + i * 0.35, anchor=tk.CENTER)
             self.attachment_labels[cat] = lbl
 
+        # 底部信息行：识别状态 + 姿态，放在同一个 Frame 里自动横排，
+        # 避免用固定坐标时与枪名长度或右侧配件标签重叠
+        self.info_frame = tk.Frame(self.root, bg=_COLOR_BG_DEFAULT)
+        self.info_frame.place(x=2, y=40)
+
         self.rec_label: tk.Label | None = tk.Label(
-            self.root,
+            self.info_frame,
             text="",
             font=tkfont.Font(family=_FONT_FAMILY, size=7, weight="normal"),
             fg=_COLOR_FG_DEFAULT,
@@ -334,7 +357,18 @@ class OverlayWindow:
             padx=0,
             pady=0,
         )
-        self.rec_label.place(x=2, y=42)
+        self.rec_label.pack(side=tk.LEFT)
+
+        self.stance_label = tk.Label(
+            self.info_frame,
+            text="站",
+            font=tkfont.Font(family=_FONT_FAMILY, size=7, weight=_FONT_WEIGHT),
+            fg=_COLOR_FG_DEFAULT,
+            bg=_COLOR_BG_DEFAULT,
+            padx=0,
+            pady=0,
+        )
+        self.stance_label.pack(side=tk.LEFT, padx=(10, 0))
 
         self.root.update_idletasks()
 
@@ -381,6 +415,12 @@ class OverlayWindow:
                     self._do_update_attachment(str(payload))
                 elif msg_type == _TYPE_REC:
                     self._do_update_recognition(str(payload))
+                elif msg_type == _TYPE_STANCE:
+                    self._do_update_stance(str(payload))
+                elif msg_type == _TYPE_POSITION:
+                    self._do_set_position(*payload)  # type: ignore[arg-type]
+                elif msg_type == _TYPE_DRAG:
+                    self._do_set_draggable(bool(payload))
         except queue.Empty:
             pass
 
@@ -406,21 +446,29 @@ class OverlayWindow:
         if self.locked:
             self.root.configure(bg=_COLOR_BG_LOCKED)
             self.label.config(bg=_COLOR_BG_LOCKED, fg=_COLOR_FG_LOCKED)
+            if self.info_frame:
+                self.info_frame.config(bg=_COLOR_BG_LOCKED)
             if self.scope_label:
                 self.scope_label.config(bg=_COLOR_BG_LOCKED, fg=_COLOR_FG_LOCKED)
             for lbl in self.attachment_labels.values():
                 lbl.config(bg=_COLOR_BG_LOCKED, fg=_COLOR_FG_LOCKED)
             if self.rec_label:
                 self.rec_label.config(bg=_COLOR_BG_LOCKED, fg=_COLOR_FG_LOCKED)
+            if self.stance_label:
+                self.stance_label.config(bg=_COLOR_BG_LOCKED, fg=_COLOR_FG_LOCKED)
         else:
             self.root.configure(bg=_COLOR_BG_DEFAULT)
             self.label.config(bg=_COLOR_BG_DEFAULT, fg=_COLOR_FG_DEFAULT)
+            if self.info_frame:
+                self.info_frame.config(bg=_COLOR_BG_DEFAULT)
             if self.scope_label:
                 self.scope_label.config(bg=_COLOR_BG_DEFAULT, fg=_COLOR_FG_DEFAULT)
             for lbl in self.attachment_labels.values():
                 lbl.config(bg=_COLOR_BG_DEFAULT, fg=_COLOR_FG_DEFAULT)
             if self.rec_label:
                 self.rec_label.config(bg=_COLOR_BG_DEFAULT, fg=_COLOR_FG_DEFAULT)
+            if self.stance_label:
+                self.stance_label.config(bg=_COLOR_BG_DEFAULT, fg=_COLOR_FG_DEFAULT)
 
         self.label.config(text=self.current_text)
 
@@ -449,6 +497,99 @@ class OverlayWindow:
             self.rec_status = text
             self.rec_label.config(text=text)
 
+    def _do_update_stance(self, stance: str) -> None:
+        """更新姿态标签。入参是 stand / crouch / prone，显示为单字。"""
+        if self.root is None or self.stance_label is None:
+            return
+        if stance == self.stance:
+            return
+        self.stance = stance
+        label = _STANCE_DISPLAY.get(stance, _STANCE_DISPLAY["stand"])
+        self.stance_label.config(text=label)
+
+    # ---- 位置控制 ----
+
+    def get_position(self) -> tuple[int, int]:
+        """返回浮窗左上角在屏幕上的实际坐标（通过 Win32 查询，支持负坐标）。
+
+        窗口隐藏时 GetWindowRect 无有效值，回退到内存中记录的位置。
+        """
+        hwnd = self._get_hwnd()
+        if hwnd and _user32.IsWindowVisible(hwnd):
+            rect = wintypes.RECT()
+            if _user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+                if rect.right > rect.left or rect.bottom > rect.top:
+                    return (rect.left, rect.top)
+        return self._position
+
+    def _do_set_position(self, x: int, y: int) -> None:
+        if self.root is None:
+            return
+        self._position = (int(x), int(y))
+        self.root.geometry(f"+{int(x)}+{int(y)}")
+
+    def set_position(self, x: int, y: int) -> None:
+        """线程安全地移动浮窗到指定位置。"""
+        if self.root is None:
+            self._position = (int(x), int(y))
+            return
+        self._pending.put((_TYPE_POSITION, (int(x), int(y))))
+
+    def is_draggable(self) -> bool:
+        return self._draggable
+
+    def _do_set_draggable(self, enabled: bool) -> None:
+        """切换浮窗可拖动状态。
+
+        解锁时移除 WS_EX_TRANSPARENT 使浮窗可接收鼠标事件，用户可按住拖动；
+        固定时恢复点击穿透并保留当前位置。
+        """
+        if self.root is None:
+            self._draggable = bool(enabled)
+            return
+
+        hwnd = self._get_hwnd()
+        if hwnd:
+            ex_style = _user32.GetWindowLongW(hwnd, self.GWL_EXSTYLE)
+            if enabled and not (ex_style & self.WS_EX_LAYERED):
+                ex_style |= self.WS_EX_LAYERED
+            if enabled:
+                ex_style &= ~self.WS_EX_TRANSPARENT
+            else:
+                ex_style |= self.WS_EX_TRANSPARENT
+            _user32.SetWindowLongW(hwnd, self.GWL_EXSTYLE, ex_style)
+            _user32.SetWindowPos(
+                hwnd, 0, 0, 0, 0, 0,
+                _SWP_NOMOVE | _SWP_NOSIZE | _SWP_NOACTIVATE | _SWP_FRAMECHANGED,
+            )
+
+        if enabled and not self._draggable:
+            self.root.bind("<Button-1>", self._on_drag_start)
+            self.root.bind("<B1-Motion>", self._on_drag_motion)
+        elif not enabled and self._draggable:
+            self.root.unbind("<Button-1>")
+            self.root.unbind("<B1-Motion>")
+
+        self._draggable = bool(enabled)
+
+    def set_draggable(self, enabled: bool) -> None:
+        """线程安全地切换浮窗可拖动状态（解锁/固定）。"""
+        if self.root is None:
+            self._draggable = bool(enabled)
+            return
+        self._pending.put((_TYPE_DRAG, bool(enabled)))
+
+    def _on_drag_start(self, event: tk.Event) -> None:
+        self._drag_offset = (event.x, event.y)
+
+    def _on_drag_motion(self, event: tk.Event) -> None:
+        if self.root is None:
+            return
+        x = event.x_root - self._drag_offset[0]
+        y = event.y_root - self._drag_offset[1]
+        self._position = (x, y)
+        self.root.geometry(f"+{x}+{y}")
+
     def _do_set_mode(self, mode: str) -> None:
         if self.root is None or self.mode_label is None:
             return
@@ -464,6 +605,12 @@ class OverlayWindow:
         if self.root is None or self.label is None:
             return
         self._pending.put((_TYPE_TEXT, text))
+
+    def update_stance(self, stance: str) -> None:
+        """线程安全地更新姿态显示（stand / crouch / prone）"""
+        if self.root is None:
+            return
+        self._pending.put((_TYPE_STANCE, stance))
 
     def set_locked(self, locked: bool) -> None:
         if self.root is None or self.label is None:
@@ -511,6 +658,8 @@ class OverlayWindow:
             self.root = None
             self.label = None
             self.rec_label = None
+            self.stance_label = None
+            self.info_frame = None
             self._cached_hwnd = 0
         logger.info("浮窗已关闭")
 

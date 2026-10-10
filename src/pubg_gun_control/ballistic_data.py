@@ -90,8 +90,8 @@ class AttachmentCategory:
 class GunCoefficients:
     """单把枪的完整系数配置
 
-    8 个系数顺序对应 lua canUse 表中 8 个数值列：
-      自身 / 下蹲 / 屏息 / 裸配 / 满配 / 趴姿 / 2 倍镜 / 3 倍镜
+    10 个系数顺序对应 lua canUse 表中 10 个数值列：
+      自身 / 下蹲 / 屏息 / 裸配 / 满配 / 趴姿 / 2 倍镜 / 3 倍镜 / 4 倍镜 / 6 倍镜
 
     interval 与 ballistic 对应 pubg["GunName"] 函数中的射击间隔与逐发弹道。
     """
@@ -106,11 +106,14 @@ class GunCoefficients:
     prone: float
     scope2x: float
     scope3x: float
+    scope4x: float = 1.0
+    scope6x: float = 1.0
     interval: int = DEFAULT_INTERVAL
     ballistic: list[tuple[int, float]] = field(default_factory=list)
 
     COEF_FIELDS: tuple[str, ...] = (
-        "coef", "crouch", "breath", "bare", "full", "prone", "scope2x", "scope3x",
+        "coef", "crouch", "breath", "bare", "full", "prone",
+        "scope2x", "scope3x", "scope4x", "scope6x",
     )
 
     def to_dict(self) -> dict[str, Any]:
@@ -134,20 +137,27 @@ class GunCoefficients:
 
     @classmethod
     def from_lua_row(cls, name: str, mode: int, numbers: list[float]) -> "GunCoefficients":
-        """从 lua 解析出的 (name, mode, [n1..n8]) 创建"""
+        """从 lua 解析出的 (name, mode, [n1..n10]) 创建
+
+        兼容旧版 8 列格式（无 4 倍/6 倍镜系数）：不足 10 个时，缺失字段使用默认 1.0。
+        """
         if len(numbers) < 8:
             raise ValueError(f"枪械 {name!r} 系数数量不足 8 个，实际 {len(numbers)}")
+        # 不足 10 个补齐到 10 个，4/6 倍镜系数默认 1.0
+        padded = list(numbers) + [1.0] * max(0, 10 - len(numbers))
         return cls(
             name=name,
             mode=mode,
-            coef=numbers[0],
-            crouch=numbers[1],
-            breath=numbers[2],
-            bare=numbers[3],
-            full=numbers[4],
-            prone=numbers[5],
-            scope2x=numbers[6],
-            scope3x=numbers[7],
+            coef=padded[0],
+            crouch=padded[1],
+            breath=padded[2],
+            bare=padded[3],
+            full=padded[4],
+            prone=padded[5],
+            scope2x=padded[6],
+            scope3x=padded[7],
+            scope4x=padded[8],
+            scope6x=padded[9],
         )
 
     def to_lua_numbers(self) -> list[float]:

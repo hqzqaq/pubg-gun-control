@@ -15,7 +15,7 @@ import logging
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -75,6 +75,10 @@ class BallisticEditorWindow(QMainWindow):
             self._load_lua_file(lua_path)
         else:
             self._update_status("提示：通过 文件 → 打开 选择 lua 文件")
+
+    def set_stance_base(self, base: str) -> None:
+        """外部（config.json 的 stance.base）告知编辑器弹道基准姿态"""
+        self._detail_panel.set_stance_base(base)
 
     # ---- UI ----
 
@@ -152,6 +156,10 @@ class BallisticEditorWindow(QMainWindow):
         act_import_ballistic.triggered.connect(self._on_import_ballistic)
         tools_menu.addAction(act_import_ballistic)
 
+        act_calibrate = QAction("闭环弹道校准(&C)…", self)
+        act_calibrate.triggered.connect(self._on_calibrate)
+        tools_menu.addAction(act_calibrate)
+
         # 预设菜单
         preset_menu = menubar.addMenu("预设(&P)")
 
@@ -217,6 +225,7 @@ class BallisticEditorWindow(QMainWindow):
         self._dirty = False
         bak_path = Path(self._lua_path + ".bak")
 
+        # 收集保存详情用于日志，不再弹窗
         messages: list[str] = [f"已写入：\n{self._lua_path}", f"\n备份文件：\n{bak_path}"]
 
         # 同步到识别配置中指定的基础脚本（导出 GHUB/dofile 脚本的源文件）
@@ -227,6 +236,7 @@ class BallisticEditorWindow(QMainWindow):
 
         # 同步到 dofile 配置文件
         config_path = _resolve_project_root() / "pubg_config.lua"
+        dofile_ok = True
         try:
             # 如果 pubg_config.lua 不存在或被污染（含 OnEvent 等执行逻辑），先重新生成纯数据版本
             # 否则 serialize 只替换三段数据块，会保留多余的函数定义和初始化代码
@@ -243,10 +253,14 @@ class BallisticEditorWindow(QMainWindow):
             self._parser.serialize(self._config, str(config_path), backup=False)
             messages.append(f"\n\ndofile配置已同步: {config_path}")
         except Exception as exc:
+            dofile_ok = False
             messages.append(f"\n\ndofile配置同步失败: {exc}")
+            logger.exception("dofile 配置同步失败")
 
-        QMessageBox.information(self, "保存成功", "\n".join(messages))
-        self._update_status(f"已保存: {self._lua_path}")
+        # 保存成功：不再弹窗，状态栏临时提示 + 标题栏短暂标记
+        # dofile 同步失败属次要问题，主保存已成功，故仅警告提示
+        self._show_save_toast(dofile_ok=dofile_ok)
+        logger.info("\n".join(messages))
 
     def _sync_to_base_lua(self) -> str:
         """同步当前配置到识别配置中指定的基础脚本。
@@ -378,6 +392,48 @@ class BallisticEditorWindow(QMainWindow):
         self._update_status(f"已从 [{src_name}] 导入弹道到 [{target_name}]")
 
     # ---- 枪械联动 ----
+
+    def _on_calibrate(self) -> None:
+        """打开闭环弹道校准向导（非模态，方便切到游戏）"""
+        if self._config is None or not self._lua_path:
+            QMessageBox.warning(self, "提示", "请先打开一个 lua 文件")
+            return
+        if not self._current_gun_name:
+            QMessageBox.warning(self, "提示", "请先在左侧列表选择要校准的枪械")
+            return
+        from .calibration_dialog import CalibrationDialog
+
+        dlg = CalibrationDialog(
+            self, self._config, self._lua_path, self._current_gun_name
+        )
+        dlg.calibrationApplied.connect(self._on_calibration_applied)
+        dlg.roundTableReady.connect(self._on_calib_round_table)
+        dlg.setAttribute(Qt.WA_DeleteOnClose)
+        dlg.show()
+        self._calib_dialog = dlg  # 保持引用，非模态
+
+    def _on_calib_round_table(self, interval: int, ballistic: list) -> None:
+        """manual 模式：校准器每轮迭代出新表 → 走与"保存到 lua"相同的写回流程
+
+        保证 GHUB 通过 dofile 能读到最新弹道（.bak 备份 + dofile 同步）。
+        """
+        if self._config is None or not self._current_gun_name:
+            return
+        gun = self._config.find_gun(self._current_gun_name)
+        if gun is None:
+            return
+        gun.interval = interval
+        gun.ballistic = ballistic
+        self._dirty = True
+        self._on_save_lua()
+        self._refresh_trajectory()
+        self._update_status(f"校准迭代弹道已写回 [{self._current_gun_name}]")
+
+    def _on_calibration_applied(self, gun_name: str) -> None:
+        """校准结果已写入内存配置：标脏 + 刷新界面，保存仍走正常流程"""
+        self._dirty = True
+        self._on_gun_selected(gun_name)
+        self._update_status(f"校准结果已应用到 [{gun_name}]，未保存")
 
     def _on_gun_selected(self, gun_name: str) -> None:
         if self._config is None:
@@ -535,6 +591,28 @@ class BallisticEditorWindow(QMainWindow):
 
     def _update_status(self, msg: str) -> None:
         self._status_label.setText(msg)
+
+    def _show_save_toast(self, dofile_ok: bool = True) -> None:
+        """保存成功后的非弹窗提示。
+
+        - 状态栏临时消息：显示 3 秒后自动消失（QStatusBar.showMessage 自带超时）
+        - 永久状态标签：更新为"已保存: <路径>"
+        - 标题栏：短暂追加" ✓ 已保存"标记，2 秒后恢复
+        - dofile 同步失败时临时消息改为警告色样式，提示用户检查日志
+        """
+        # 永久标签：保留路径信息
+        self._status_label.setText(f"已保存: {self._lua_path}")
+        # 临时消息：3 秒后自动消失
+        if dofile_ok:
+            self.statusBar().showMessage("✓ 保存成功（dofile 已同步）", 3000)
+        else:
+            self.statusBar().showMessage("✓ 已保存（dofile 同步失败，详见日志）", 5000)
+        # 标题栏短暂标记
+        base_title = "弹道系数可视化编辑器"
+        if self._lua_path:
+            base_title = f"{Path(self._lua_path).name} - 弹道系数可视化编辑器"
+        self.setWindowTitle(f"{base_title}  ✓ 已保存")
+        QTimer.singleShot(2000, lambda: self.setWindowTitle(base_title))
 
     def closeEvent(self, event) -> None:  # noqa: N802
         if self._dirty:

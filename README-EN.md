@@ -1,13 +1,17 @@
 # PUBG Gun Control
 
-A weapon switch display tool for PUBG, designed to work with Logitech G HUB recoil macros. It monitors mouse and keyboard combinations to display the currently selected weapon name in the upper-left corner of the screen.
+A weapon switch display and auto-recognition tool for PUBG, designed to work with Logitech G HUB recoil macros. It monitors mouse and keyboard combinations to display the currently selected weapon name, scope and attachments in the upper-left corner of the screen; and it can screenshot-auto-detect the current weapon and attachments, writing the result into `rec.lua` for the GHUB script so recoil parameters switch automatically.
+
+It also provides **stance detection** (auto-switching stand/crouch/prone coefficients), **closed-loop ballistic auto-calibration** (algorithmically deriving the compensation table after live fire) and an **on-screen center crosshair**.
 
 [中文版](README.md)
 
 ## Features
 
+### Display & Switching
 - Floating window in upper-left corner shows weapon name, scope mode and attachments (white background, red text, always on top)
 - Mouse click-through overlay, no interference with game operations
+- Overlay position can be unlocked and dragged; coordinates persist across restarts
 - Multiple weapon switch combinations
 - Caps Lock key controls recoil mode on/off
 - **Weapon Lock Feature**: RCtrl + Mouse G4 toggles lock/unlock weapon switching, overlay turns yellow when locked
@@ -16,11 +20,47 @@ A weapon switch display tool for PUBG, designed to work with Logitech G HUB reco
 - **Attachment Cycling**: Modifier key + mouse middle button cycles through muzzle/grip/stock attachments
 - **Scope Mode Switching**: RAlt + mouse side buttons switch between 2x/3x scope; current scope is shown at the top-left of the overlay
 - **One-Key Reset**: LCtrl + LAlt + Win resets all state (weapon, scope, attachments, lock)
-- **Voice Prompts for Key Actions**: Plays audio cues for recoil mode on/off, lock/unlock, and lock interception; supports volume control and per-event toggle
+
+### Stance Detection (Stand / Crouch / Prone)
+- **Automatic stance tracking**: listens to in-game keypresses to infer the current stance and writes it to `rec_stance` in `rec.lua`, so the GHUB script switches recoil coefficients accordingly
+- Defaults: **C = crouch**, **Z = prone**, **Space = break key** (jumping/vaulting forces a reset to stand); all keys are remappable in settings
+- **Break mechanism**: press/release pairing eliminates Windows key auto-repeat, so holding C only toggles once
+- **Focus filtering**: stance is only updated while PUBG is in the foreground, avoiding accidental triggers while typing on the desktop
+- **Manual correction**: tray menu → "Reset Stance to Stand" for drift caused by being knocked down, entering vehicles, swimming, etc.
+- **Base stance conversion**: the ballistic table base can be `stand` or `crouch`; with `crouch` base, standing compensation = 1 / crouch coefficient (the editor shows the live conversion)
+
+### Closed-Loop Ballistic Auto-Calibration
+- **Fully automatic**: launched from Editor → "Tools → Closed-Loop Recoil Calibration…", no manual bullet-hole tracing
+- **Iterative learning control (ILC)**: round 0 fires uncompensated to measure the raw recoil curve → each later round fires with the current compensation table and measures residual drift → converges in 2~3 rounds
+- **Screen-pixel tracking**: uses mss high-frequency screen capture plus OpenCV template matching to track world-reference drift relative to screen center, then splits the curve into per-shot increments by fire rate
+- **Automatic Lua conversion**: `V(k) = P*(k) / ((ADS/100) × gun coefficient)`; scope and stance differences are handled by the Lua-side coefficients
+- **Non-modal wizard**: runs in a worker thread with live log output; results are applied to the editor's in-memory config (marked dirty) and written back to Lua only through the normal save flow
+- Supports ILC (automatic) and manual per-round confirmation modes
+
+### On-Screen Center Crosshair
+- Draws a customizable crosshair at screen center, solving the problem of losing aim point when the character is running
+- Shapes: cross / dot / circle / cross-dot, with configurable color and size plus live preview
+- Two modes: **always on** or **hold a key** (default Shift)
+- Multi-monitor aware: the crosshair follows the display under the mouse cursor
+- Always-on-top, click-through, tool-window style — never interferes with gameplay
+
+### Auto Recognition
+- **Screenshot recognition of current weapon**: press F2 to detect the current weapon, muzzle, grip, stock and scope, then write the result into `rec.lua`
+- **dofile mode export**: exports `auto_recognize_ghub.lua` + `auto_recognize_rec.lua`; the GHUB script loads results via `loadstring`, no re-export needed after every edit
+- **Dynamic weapon list**: weapon list and weapon-type mapping (AR / SMG) are inferred from the base script's `canUse` groups, so adding a gun requires no manual mapping table
+- **ROI selection**: frame the recognition regions on a full-screen capture, with BackSpace to go back to the previous region
+- **Guided template capture**: muzzles grouped by weapon type (AR / SMG), scopes cover irons/red dot/holo/etc.
+
+### Editor & Analysis
 - **Ballistic Coefficient Visual Editor**: Tray menu → "Open Editor" or run `main_editor.py` standalone; visually adjust 8 gun coefficients, mode (disabled/enabled/auto-click) and attachment combos with real-time trajectory preview
 - **Scope Switch Preview**: Editor supports 1x/2x/3x scope switching and multi-scope overlay comparison
 - **Preset Management**: Save/load/delete config presets (switch profiles by DPI/resolution/mouse model)
 - **Lua Auto-Backup**: Editor automatically creates `.bak` backup on save
+- **Ballistic Analysis**: multi-strategy bullet-hole detection (gray holes → green markers → OpenCV contours), full-magazine normalization and per-shot alignment, with a visual preview before saving
+
+### Others
+- **Voice Prompts for Key Actions**: Plays audio cues for recoil mode on/off, lock/unlock, and lock interception; supports volume control and per-event toggle
+- Settings window with tab layout (Basic / Gun / Recognition / Voice / Crosshair)
 - Works with Logitech G HUB recoil macros
 - `1.2.2-2024.5.20.-GHUB.-github.lua` is the recoil script, needs to be imported into G HUB, tutorials available on Bilibili etc.
 - `Mouse shortcuts are consistent with the recoil script. If you need to change shortcuts, weapon configurations, or recoil trajectory parameters, you can modify them yourself, AI can help with modifications`
@@ -102,6 +142,66 @@ The current scope (1/2/3) is displayed at the top-left of the overlay.
 | Caps Lock OFF                                   | Show "None"                                    |
 | Press RCtrl + Mouse G4 (Back)                   | Lock/Unlock weapon switching (overlay turns yellow when locked) |
 | Press LCtrl + LAlt + Win                       | One-key reset of all state (weapon, scope, attachments, lock) |
+
+### Stance Detection (In-Game Keys)
+
+| Key           | Function                                                     |
+| ------------- | ------------------------------------------------------------ |
+| **C**         | Toggle crouch / stand                                         |
+| **Z**         | Toggle prone / stand                                          |
+| **Space**     | Break key — forces a reset to stand (jump, vault)             |
+
+> Keys are remappable in Settings → Basic → Stance Detection. Stance detection must be enabled.
+
+### On-Screen Center Crosshair
+
+| Key                    | Function                                       |
+| ---------------------- | ---------------------------------------------- |
+| **Shift** (remappable) | Hold to show the crosshair (`hold` mode)        |
+| Custom hotkey          | Toggle the crosshair when in `always` mode      |
+
+## Stance Detection Details
+
+Settings → **Basic** tab → "Stance Detection (Stand / Crouch / Prone)".
+
+| Option                | Default   | Description                                                          |
+| --------------------- | --------- | -------------------------------------------------------------------- |
+| Enable stance detection | On      | When off, `rec_stance` keeps its default value                        |
+| Ballistic table base  | `crouch`  | Base stance of the coefficient table (see conversion table below)    |
+| Crouch key            | `C`       | Press once to crouch, press again to return to stand                 |
+| Prone key             | `Z`       | Press once to prone, press again to return to stand                  |
+| Break keys            | `Space`   | Jump/vault always returns to stand                                   |
+| Track only when PUBG is in foreground | On | Avoids accidental triggers while typing on the desktop   |
+
+**Base stance conversion** (the most common pitfall):
+
+| Base      | Stand            | Crouch          | Prone                   |
+| --------- | ---------------- | --------------- | ----------------------- |
+| `stand`   | ×1.00            | ×crouch coeff.  | ×prone coeff.           |
+| `crouch`  | ×(1 / crouch coeff.) | ×1.00       | ×(prone coeff. / crouch coeff.) |
+
+With `crouch` base, **filling in 1.00 for the crouch coefficient means zero standing compensation** (recoil control will fail). The editor shows the live conversion for all three stances when you select a gun.
+
+## Closed-Loop Calibration
+
+Editor → **Tools → Closed-Loop Recoil Calibration…** (`Ctrl+C`).
+
+**How it works**: while firing, the mouse itself does not move; recoil appears as the game world drifting relative to screen center. The calibrator captures the screen-center ROI at high frequency, tracks that drift with OpenCV template matching to obtain the recoil curve, splits it into per-shot increments by fire rate, and derives the compensation table through iterative learning.
+
+**Steps**:
+
+1. Open the editor and select the gun to calibrate (e.g. RPD)
+2. "Tools → Closed-Loop Recoil Calibration…", configure fire interval, magazine size, bursts per round and max rounds
+3. Switch to the game when prompted, and **stay standing with a red dot / holo** (scope and stance differences are handled by Lua-side coefficients)
+4. Click "Confirm Fire" for each round as prompted and wait for it to finish
+5. After 2~3 rounds the residual converges and the log reports the result
+6. Results are applied to the editor's in-memory config (status bar shows "not saved") — **save manually** to write back to Lua
+
+CLI alternative:
+
+```bash
+uv run python -m pubg_gun_control.recoil_calibrator --gun RPD
+```
 
 ## Using with Logitech G HUB
 
@@ -295,6 +395,27 @@ def get_default_config() -> list[dict[str, str]]:
 You also need to sync modify the `G_bind` configuration in `1.2.2-2024.5.20.-GHUB.-github.lua`.
 
 ## Changelog
+
+### v1.3.0 (2026-10-10)
+- **Added**: stance detection module `stance_tracker.py` — listens to C/Z/Space to infer stand/crouch/prone and passes it to the GHUB script via `rec_stance` so recoil coefficients follow the stance
+  - press/release pairing eliminates Windows key auto-repeat (holding C toggles once)
+  - break-key mechanism: jumping/vaulting forces a reset to stand
+  - foreground-window focus filtering avoids desktop typing false triggers
+  - new tray menu item "Reset Stance to Stand" for manual drift correction
+  - new stance configuration block in Settings → Basic
+- **Added**: closed-loop ballistic auto-calibration `recoil_calibrator.py` + wizard dialog `calibration_dialog.py`
+  - ILC iterative learning: uncompensated baseline → compensated rounds → estimate pixel gain γ → converge in 2~3 rounds
+  - mss high-frequency capture + OpenCV template matching to track world-reference drift
+  - Editor entry "Tools → Closed-Loop Recoil Calibration…", runs in a QThread without blocking the UI, live log output
+  - Results applied to in-memory config (marked dirty); writing back to Lua still goes through the normal save flow
+- **Added**: on-screen center crosshair `crosshair_window.py` with cross/dot/circle/cross-dot shapes, configurable color and size
+  - always-on / hold-a-key modes, follows the display under the mouse cursor in multi-monitor setups
+  - always-on-top, click-through, tool-window style; new "Crosshair" tab in settings with live preview
+- **Added**: overlay position can be unlocked and dragged, persisted as `overlay_position` in `config.json`
+- **Added**: new `stance` and `crosshair` sections in `config.json`
+- **Added**: new RPD weapon template; 4x and 6x scope templates
+- **Tests**: added `test_stance_tracker.py`, `test_recoil_calibrator.py`, `test_calibration_dialog.py`, `test_lua_export_stance.py`
+- **Fixed**: recognition results are now read via `loadLuaFile` global-variable injection, working around silent `rec.lua` read failures caused by the `io` library being unavailable in the GHUB sandbox
 
 ### v1.1.3 (2026-06-18)
 - **Fix**: No voice prompts after packaging as exe; `pubg_gun_control.spec` now includes `voice/` in `Analysis.datas` so resources are extracted to `_MEIPASS/voice/` at runtime

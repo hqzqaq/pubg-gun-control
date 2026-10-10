@@ -35,6 +35,7 @@ rec_muzzle = 1
 rec_grip = 1
 rec_stock = 1
 rec_scope = 1
+rec_stance = "stand"
 local _capsWasOn = false
 -- ====== 自动识别变量结束 ======
 """
@@ -154,7 +155,7 @@ def generate_auto_recognize_script(
         "if pubg[gunName] then\n"
         "\t\t\t\t\tpubg.gunOptions[type][gunCount] = pubg[gunName](gunName)\n"
         "\t\t\t\telse\n"
-        "\t\t\t\t\tpubg.gunOptions[type][gunCount] = { duration=0, amount=0, interval=100, ballistic={0}, ctrlmodeRatio=1, BreathRatio=1, LuopeiRatio=1, ManpeiRatio=1, PaziRatio=1, scopeX2Ratio=1, scopeX3Ratio=1 }\n"
+        "\t\t\t\t\tpubg.gunOptions[type][gunCount] = { duration=0, amount=0, interval=100, ballistic={0}, ctrlmodeRatio=1, BreathRatio=1, LuopeiRatio=1, ManpeiRatio=1, PaziRatio=1, scopeX2Ratio=1, scopeX3Ratio=1, scopeX4Ratio=1, scopeX6Ratio=1 }\n"
         "\t\t\t\t\tOutputLogMessage(\"[WARN] %s 无弹道数据，已跳过\\n\", gunName)\n"
         "\t\t\t\tend"
     )
@@ -170,6 +171,29 @@ def generate_auto_recognize_script(
 # ---------------------------------------------------------------------------
 # dofile 模式：包装脚本 + 配置文件分离
 # ---------------------------------------------------------------------------
+
+def _stance_config_lines() -> list[str]:
+    """姿态配置段，用于源脚本尚未同步时补齐 userInfo"""
+    try:
+        from pubg_gun_control.config_manager import load_stance
+
+        cfg = load_stance()
+    except Exception:  # noqa: BLE001 - 兜底路径，读不到就用默认
+        cfg = {}
+
+    base = str(cfg.get("base", "crouch"))
+    if base not in ("stand", "crouch"):
+        base = "crouch"
+    enabled = "true" if cfg.get("enabled", True) else "false"
+
+    return [
+        "\t-- 姿态识别：自动切换 站立 / 蹲下 / 趴下 的压枪系数",
+        "\tstance = {",
+        f"\t\tenabled = {enabled},",
+        f'\t\tbase = "{base}",',
+        "\t},",
+    ]
+
 
 def generate_config_only(
     source_path: str,
@@ -206,6 +230,7 @@ def generate_config_only(
     for block_name in ("attachmentConfig", "gunNoStock", "userInfo"):
         in_block = False
         depth = 0
+        block_lines: list[str] = []
         for line in source.splitlines(keepends=True):
             stripped = line.strip()
             if not in_block:
@@ -213,9 +238,18 @@ def generate_config_only(
                     in_block = True
                     depth = 0
             if in_block:
-                config_lines.append(line.rstrip("\n"))
+                text = line.rstrip("\n")
+                config_lines.append(text)
+                block_lines.append(text)
                 depth += line.count("{") - line.count("}")
                 if depth <= 0:
+                    # 源脚本可能还没同步姿态配置，缺了就按当前设置补一段，
+                    # 否则导出/编辑器保存会把 stance 抹掉，姿态识别静默失效
+                    if block_name == "userInfo" and not any(
+                        l.strip().startswith("stance") for l in block_lines
+                    ):
+                        close_idx = len(config_lines) - 1
+                        config_lines[close_idx:close_idx] = _stance_config_lines()
                     config_lines.append("")
                     break
 
@@ -308,6 +342,7 @@ def generate_dofile_files(
     wrapper_lines.append("rec_grip = 1")
     wrapper_lines.append("rec_stock = 1")
     wrapper_lines.append("rec_scope = 1")
+    wrapper_lines.append("rec_stance = \"stand\"")
     wrapper_lines.append("")
 
     # userInfo 默认值（dofile 加载配置前供 pubg 表定义使用，加载后被覆盖）

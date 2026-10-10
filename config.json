@@ -1,4 +1,14 @@
 {
+  "stance": {
+    "enabled": true,
+    "base": "crouch",
+    "crouch_key": "c",
+    "prone_key": "z",
+    "break_keys": [
+      "space"
+    ],
+    "require_focus": true
+  },
   "shortcuts": [
     {
       "modifier": "alt",
@@ -76,6 +86,16 @@
       "muzzle": true,
       "grip": true,
       "stock": true
+    },
+    "RPD": {
+      "muzzle": false,
+      "grip": false,
+      "stock": true
+    },
+    "MG3": {
+      "muzzle": false,
+      "grip": false,
+      "stock": false
     },
     "AUG": {
       "muzzle": true,
@@ -155,6 +175,10 @@
   },
   "voice_enabled": true,
   "overlay_visible": true,
+  "overlay_position": [
+    2,
+    20
+  ],
   "voice_volume": 100,
   "voice_event_enabled": {
     "recoil_on": true,
@@ -216,13 +240,19 @@
     "base_lua_path": "",
     "threshold_gun": 0.5,
     "threshold_muzzle": 0.25,
-    "threshold_grip": 0.3,
+    "threshold_grip": 0.25,
     "threshold_stock": 0.35,
     "threshold_scope": 0.2
   },
+  "crosshair": {
+    "enabled": true,
+    "mode": "hold",
+    "hold_key": "shift",
+    "color": "#00FF00",
+    "size": 10,
+    "shape": "dot"
+  },
   "editor": {
-    "recent_files": [
-      "D:\\develop\\python\\pubg-gun-control\\pubg_config.lua"
-    ]
+    "recent_files": []
   }
 }

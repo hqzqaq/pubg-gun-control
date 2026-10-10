@@ -24,6 +24,7 @@ from PySide6.QtWidgets import QApplication, QFileDialog
 from pubg_gun_control.config_manager import (
     add_editor_recent,
     load_editor_recent,
+    load_stance,
 )
 from pubg_gun_control.editor_ui import BallisticEditorWindow
 from pubg_gun_control.editor_ui.main_window import _DEFAULT_PRESETS_DIR
@@ -65,6 +66,12 @@ def main() -> int:
     recent = load_editor_recent()
     window = BallisticEditorWindow(lua_path=lua_path)
     window.set_recent_files(recent)
+
+    # 同步姿态基准，让系数面板能算出「实际生效倍数」
+    try:
+        window.set_stance_base(load_stance().get("base", "stand"))
+    except Exception as exc:  # 配置缺失不影响编辑器启动
+        logger.warning("读取 stance 配置失败: %s", exc)
 
     if lua_path:
         add_editor_recent(lua_path)

@@ -193,17 +193,19 @@ class TrajectoryView(QWidget):
     """弹道轨迹预览图
 
     嵌入 matplotlib FigureCanvasQTAgg 到 PySide6 窗口。
-    支持 1x/2x/3x 倍镜切换与多倍镜叠加对比。
+    支持 1x/2x/3x/4x/6x 倍镜切换与多倍镜叠加对比。
     """
 
     # 倍镜到 GunCoefficients 字段的映射
-    _SCOPE_FIELDS = {1: "coef", 2: "scope2x", 3: "scope3x"}
+    _SCOPE_FIELDS = {1: "coef", 2: "scope2x", 3: "scope3x", 4: "scope4x", 6: "scope6x"}
 
-    # 倍镜配色（主轨迹用绿，叠加用黄/蓝）
+    # 倍镜配色（主轨迹用绿，叠加用黄/蓝/紫/橙）
     _SCOPE_COLORS = {
         1: "#4caf50",  # 绿
         2: "#ffeb3b",  # 黄
         3: "#2196f3",  # 蓝
+        4: "#9c27b0",  # 紫
+        6: "#ff9800",  # 橙
     }
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -230,6 +232,8 @@ class TrajectoryView(QWidget):
         self._scope_combo.addItem("1 倍镜", userData=1)
         self._scope_combo.addItem("2 倍镜", userData=2)
         self._scope_combo.addItem("3 倍镜", userData=3)
+        self._scope_combo.addItem("4 倍镜", userData=4)
+        self._scope_combo.addItem("6 倍镜", userData=6)
         self._scope_combo.setCurrentIndex(0)
         self._scope_combo.currentIndexChanged.connect(self._on_scope_changed)
         toolbar.addWidget(self._scope_combo)
@@ -237,7 +241,7 @@ class TrajectoryView(QWidget):
         toolbar.addSpacing(16)
         toolbar.addWidget(QLabel("叠加对比:"))
         self._overlay_checks: dict[int, QCheckBox] = {}
-        for scope, label in [(1, "1x"), (2, "2x"), (3, "3x")]:
+        for scope, label in [(1, "1x"), (2, "2x"), (3, "3x"), (4, "4x"), (6, "6x")]:
             cb = QCheckBox(label)
             cb.stateChanged.connect(self._on_overlay_changed)
             toolbar.addWidget(cb)

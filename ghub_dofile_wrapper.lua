@@ -16,6 +16,7 @@ rec_muzzle = 1
 rec_grip = 1
 rec_stock = 1
 rec_scope = 1
+rec_stance = "stand"
 
 userInfo = {
 	cpuLoad = 2,
@@ -56,6 +57,8 @@ pubg = {
 	G1 = false, -- G1键状态
 	currentTime = 0, -- 此刻
 	bulletIndex = 0, -- 第几颗子弹
+	currentStance = "stand", -- 当前姿态：stand | crouch | prone
+	loggedStance = "", -- 上一次已打印的姿态，避免每发刷屏
 	-- 配件状态 (索引，1 = 第一个选项)
 	muzzleIndex = 1,
 	gripIndex = 1,
@@ -168,7 +171,9 @@ function pubg.execOptions (gunName, options)
 		ManpeiRatio = gunInfo[7],
 		PaziRatio = gunInfo[8],
 		scopeX2Ratio = gunInfo[9],
-		scopeX3Ratio = gunInfo[10]
+		scopeX3Ratio = gunInfo[10],
+		scopeX4Ratio = gunInfo[11] or 1,
+		scopeX6Ratio = gunInfo[12] or 1
 	}
 
 end
@@ -230,6 +235,23 @@ function pubg.auto (options)
 	pubg.bulletIndex = math.ceil(((pubg.currentTime - pubg.startTime == 0 and {1} or {pubg.currentTime - pubg.startTime})[1]) / options.interval) + 1
 
 	if pubg.bulletIndex > options.amount then return false end
+	-- 每发刷新姿态，开火途中跳起 / 蹲下也能跟上
+	pubg.currentStance = pubg.readStance()
+	-- 诊断：只在姿态变化时打一条，看 GHUB 控制台即可确认链路是否通
+	if pubg.currentStance ~= pubg.loggedStance then
+		pubg.loggedStance = pubg.currentStance
+		local sc = userInfo.stance
+		OutputLogMessage(
+			"[STANCE] 姿态=%s | stance.enabled=%s base=%s | 下蹲系数=%s 站立实际倍数=%s\n",
+			tostring(pubg.currentStance),
+			tostring(sc and sc.enabled),
+			tostring(sc and sc.base),
+			tostring(options.ctrlmodeRatio),
+			tostring((sc and sc.base == "crouch" and pubg.currentStance == "stand")
+				and (1 / (options.ctrlmodeRatio or 1)) or 1)
+		)
+	end
+
 	-- Developer Debugging Mode
 	local d = (IsKeyLockOn("scrolllock") and { (pubg.bulletIndex - 1) * pubg.xLengthForDebug } or { 0 })[1]
 	local x = math.ceil((pubg.currentTime - pubg.startTime) / (options.interval * (pubg.bulletIndex - 1)) * d) - pubg.xCounter
@@ -275,6 +297,32 @@ function pubg.autoSleep (isTest)
 	Sleep(random)
 end
 
+--[[ 读取当前姿态 stand | crouch | prone ]]
+-- 只做文本解析、不执行文件，避免每发子弹都编译一次 lua
+function pubg.readStance ()
+	local stanceCfg = userInfo.stance
+	if not stanceCfg or not stanceCfg.enabled then return "stand" end
+	-- 首选：直接读 loadRecResult() 注入的全局变量。
+	-- GHUB 的 Lua 沙箱常常没有 io 库，走 io.open 会直接返回 nil 让姿态识别整体失效
+	if type(rec_stance) == "string" then
+		if rec_stance == "crouch" or rec_stance == "prone" then return rec_stance end
+		return "stand"
+	end
+	-- 兜底：io 可用时解析文件（不执行、开销更低）
+	if not REC_PATH then return nil end
+	if not (io and io.open) then return nil end
+
+	local f = io.open(REC_PATH, "r")
+	if not f then return nil end
+	local content = f:read("*a")
+	f:close()
+	if not content then return nil end
+
+	local value = string.match(content, "rec_stance%s*=%s*\"(%a+)\"")
+	if value == "crouch" or value == "prone" then return value end
+	return "stand"
+end
+
 --[[ get real y position ]]
 function pubg.getRealY (options, y)
 	local realY = y
@@ -287,12 +335,53 @@ function pubg.getRealY (options, y)
 			realY = realY * options.scopeX2Ratio
 		elseif pubg.scope_current == "scopeX3" and options.scopeX3Ratio then
 			realY = realY * options.scopeX3Ratio
+		elseif pubg.scope_current == "scopeX4" and options.scopeX4Ratio then
+			realY = realY * options.scopeX4Ratio
+		elseif pubg.scope_current == "scopeX6" and options.scopeX6Ratio then
+			realY = realY * options.scopeX6Ratio
 		end
 	end
--- 下蹲压枪
-	if userInfo.aimingSettings == "ctrlmode" and IsModifierPressed("lctrl") then
-		realY = realY * options.ctrlmodeRatio
+-- 姿态压枪（站立 / 蹲下 / 趴下）
+-- 优先用自动识别结果；关闭姿态识别时回退到手动修饰键（LCtrl 蹲 / LAlt 趴）
+	local crouchRatio = options.ctrlmodeRatio or 1
+	local proneRatio = options.PaziRatio or 1
+	if crouchRatio <= 0.01 then crouchRatio = 1 end
+	if proneRatio <= 0.01 then proneRatio = 1 end -- 0 会让压枪量归零，按"无减免"处理
+	local stanceRatio = 1
+	local stanceCfg = userInfo.stance
+	if stanceCfg and stanceCfg.enabled and pubg.currentStance then
+		if (stanceCfg.base or "stand") == "crouch" then
+			-- 弹道表以蹲下为基准，站立需要反向放大补偿
+			if pubg.currentStance == "stand" then
+				stanceRatio = 1 / crouchRatio
+			elseif pubg.currentStance == "prone" then
+				stanceRatio = proneRatio / crouchRatio
+			end
+		else
+			if pubg.currentStance == "crouch" then
+				stanceRatio = crouchRatio
+			elseif pubg.currentStance == "prone" then
+				stanceRatio = proneRatio
+			end
+		end
+	elseif userInfo.aimingSettings == "ctrlmode" then
+		-- 走到这里说明自动姿态识别没生效（只警告一次，避免刷屏）
+		if not pubg.stanceFallbackWarned then
+			pubg.stanceFallbackWarned = true
+			OutputLogMessage(
+				"[STANCE] 警告：自动姿态不可用，已回退手动修饰键(LCtrl=蹲/LAlt=趴)，"
+				.. "调下蹲系数无效。stance=%s, REC_PATH=%s, currentStance=%s\n",
+				tostring(userInfo.stance), tostring(REC_PATH), tostring(pubg.currentStance)
+			)
+		end
+		if IsModifierPressed("lalt") then
+			stanceRatio = proneRatio
+		elseif IsModifierPressed("lctrl") then
+			stanceRatio = crouchRatio
+		end
 	end
+	realY = realY * stanceRatio
+	pubg.lastStanceRatio = stanceRatio -- 供 autoLog 打印，方便肉眼核对姿态是否生效
 -- 屏息压枪
 	if userInfo.aimingSettings == "ctrlmode" and IsModifierPressed("lshift") then
 		realY = realY * options.BreathRatio
@@ -307,10 +396,6 @@ function pubg.getRealY (options, y)
 			stockRatio = attachmentConfig.stock[pubg.stockIndex].ratio
 		end
 		realY = realY * muzzleRatio * gripRatio * stockRatio
-	end
--- 趴姿压枪
-	if userInfo.aimingSettings == "ctrlmode" and IsModifierPressed("lalt") then
-		realY = realY * options.PaziRatio
 	end
 
 	return math.round(realY)
@@ -1005,6 +1090,11 @@ function pubg.autoLog (options, y, realY)
 		"----------------------------------- Automatically counteracting gun recoil -----------------------------------\n",
 		"------------------------------------------------------------------------------------------------------------------------------\n",
 		"scope: ", pubg.scope_current, " (", scopeVal, ") | ADS: ", tostring(adsDetected), " | y: ", y, " | realY: ", realY, "\n",
+		"stance: ", tostring(pubg.currentStance), " | enabled=", tostring(userInfo.stance and userInfo.stance.enabled),
+		" | base=", tostring(userInfo.stance and userInfo.stance.base),
+		" | ratio=", tostring(pubg.lastStanceRatio),
+		" | rec_stance=", tostring(rec_stance),
+		" | io=", tostring(io ~= nil and io.open ~= nil), "\n",
 		"bullet index: ", pubg.bulletIndex, "    target counter: ", options.ballistic[pubg.bulletIndex], "    current counter: ", pubg.counter, "\n",
 		"D-value(target - current): ", options.ballistic[pubg.bulletIndex], " - ", pubg.counter, " = ", options.ballistic[pubg.bulletIndex] - pubg.counter, "\n",
 		"move: math.ceil((", pubg.currentTime, " - ", pubg.startTime, ") / (", options.interval, " * (", pubg.bulletIndex, " - 1)) * ", options.ballistic[pubg.bulletIndex], ") - ", pubg.counter, " = ", y, "\n",
@@ -1100,6 +1190,12 @@ function loadConfig()
         pubg.generalSensitivityRatio = userInfo.sensitivity.ADS / 100
         pubg.init()
         OutputLogMessage("[CONFIG] 配置已加载\n")
+        -- 诊断：确认 pubg_config.lua 里的 stance 段有没有被正确读进来
+        local sc = userInfo.stance
+        OutputLogMessage(
+            "[CONFIG] stance = %s (enabled=%s, base=%s)\n",
+            tostring(sc), tostring(sc and sc.enabled), tostring(sc and sc.base)
+        )
     else
         OutputLogMessage("[CONFIG] 加载失败: %s\n", tostring(err))
     end
@@ -1166,6 +1262,11 @@ function OnEvent(event, arg, family)
     _capsWasOn = capsOn
 
     if AUTO_RECOGNIZE and event == "MOUSE_BUTTON_PRESSED" and arg == 1 and family == "mouse" then
+        -- 兜底：万一是粘贴脚本后没走 CapsLock 上升沿，开第一枪时补加载一次
+        if capsOn and not _configLoaded then
+            OutputLogMessage("[AUTO] 配置未加载，开火时补加载\n")
+            loadConfig()
+        end
         if capsOn and _configLoaded then
             if loadRecResult() then
                 applyRecResult()
@@ -1177,6 +1278,9 @@ function OnEvent(event, arg, family)
         pubg.OnEvent_NoRecoil(event, arg, family)
     end
 end
+
+-- 版本标记：脚本一加载就无条件打印，用来确认 GHUB 里跑的是不是这一版
+OutputLogMessage("[STANCE] 脚本版本 2026-10-01b (autoLog 含 stance 诊断行)\n")
 
 -- 工具函数
 function math.round(num, digit)

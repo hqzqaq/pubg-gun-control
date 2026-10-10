@@ -22,3 +22,6 @@ back.lua
 
 # lua_parser 写前自动备份
 *.bak
+# 姿态调试临时产物
+test/_tmp_*.lua
+*.crouchbak

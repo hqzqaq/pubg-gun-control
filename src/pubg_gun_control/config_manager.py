@@ -207,6 +207,36 @@ def load_overlay_visible() -> bool:
         return True
 
 
+def load_overlay_position() -> tuple[int, int]:
+    """读取浮窗固定位置，默认左上角 (0, 0)。"""
+    config_path = _get_config_path()
+    if not config_path.exists():
+        return (0, 0)
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            data: dict[str, Any] = json.load(f)
+        pos = data.get("overlay_position")
+        if isinstance(pos, (list, tuple)) and len(pos) == 2:
+            x, y = pos
+            if isinstance(x, int) and not isinstance(x, bool) and isinstance(y, int) and not isinstance(y, bool):
+                return (x, y)
+            if isinstance(x, (int, float)) and isinstance(y, (int, float)):
+                return (int(x), int(y))
+        return (0, 0)
+    except (json.JSONDecodeError, OSError):
+        return (0, 0)
+
+
+def save_overlay_position(x: int, y: int) -> None:
+    """保存浮窗固定位置到 config.json（合并写，不影响其他字段）。"""
+    data = _load_full_config()
+    data["overlay_position"] = [int(x), int(y)]
+    config_path = _get_config_path()
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
 def load_voice_volume() -> int:
     """读取语音音量（0~100），默认 100。"""
     config_path = _get_config_path()
@@ -296,6 +326,7 @@ def save_config(
     voice_event_enabled: dict[str, bool] | None = None,
     overlay_visible: bool | None = None,
     recoil_hotkeys: dict[str, list[str]] | None = None,
+    overlay_position: tuple[int, int] | None = None,
 ) -> None:
     config_path = _get_config_path()
     data: dict[str, Any] = {"shortcuts": shortcuts}
@@ -315,6 +346,10 @@ def save_config(
         data["overlay_visible"] = bool(overlay_visible)
     else:
         data["overlay_visible"] = load_overlay_visible()
+    if overlay_position is not None:
+        data["overlay_position"] = [int(overlay_position[0]), int(overlay_position[1])]
+    else:
+        data["overlay_position"] = list(load_overlay_position())
     if voice_volume is not None:
         clamped = int(voice_volume)
         if clamped < 0:
@@ -406,6 +441,98 @@ def load_base_lua_path(recognition: dict[str, Any] | None = None) -> str:
         if path.exists():
             return str(path)
     return ensure_base_lua_script()
+
+
+# ---------------------------------------------------------------------------
+# 姿态识别配置（站立 / 蹲下 / 趴下）
+# ---------------------------------------------------------------------------
+
+
+_DEFAULT_STANCE: dict[str, Any] = {
+    "enabled": True,          # 关闭后回退到手动修饰键模式（LCtrl 蹲 / LAlt 趴）
+    "base": "stand",          # 弹道表基准姿态：stand | crouch
+    "crouch_key": "c",        # 下蹲键（Toggle 模式）
+    "prone_key": "z",         # 趴下键
+    "break_keys": ["space"],  # 打断蹲/趴的键，如跳跃
+    "require_focus": True,    # 仅在 PUBG 前台时跟踪
+}
+
+
+def load_stance() -> dict[str, Any]:
+    """读取姿态识别配置"""
+    config_path = _get_config_path()
+    if not config_path.exists():
+        return dict(_DEFAULT_STANCE)
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            data: dict[str, Any] = json.load(f)
+        stance = data.get("stance", {})
+        if not isinstance(stance, dict):
+            return dict(_DEFAULT_STANCE)
+        result = dict(_DEFAULT_STANCE)
+        for key in _DEFAULT_STANCE:
+            if key in stance:
+                result[key] = stance[key]
+        return result
+    except (json.JSONDecodeError, OSError):
+        return dict(_DEFAULT_STANCE)
+
+
+def save_stance(stance: dict[str, Any]) -> None:
+    """保存姿态识别配置到 config.json（合并写，不影响其他字段）"""
+    data = _load_full_config()
+    data["stance"] = stance
+    config_path = _get_config_path()
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# 准星配置
+# ---------------------------------------------------------------------------
+
+
+_DEFAULT_CROSSHAIR: dict[str, Any] = {
+    "enabled": False,
+    "mode": "hold",
+    "hold_key": "shift",
+    "hotkey_enable": "1",
+    "hotkey_disable": "2",
+    "color": "#00FF00",
+    "size": 40,
+    "shape": "cross",
+}
+
+
+def load_crosshair_config() -> dict[str, Any]:
+    """读取屏幕中心准星配置，默认不启用、长按 Shift 显示十字准星。"""
+    config_path = _get_config_path()
+    if not config_path.exists():
+        return dict(_DEFAULT_CROSSHAIR)
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            data: dict[str, Any] = json.load(f)
+        crosshair = data.get("crosshair", {})
+        if not isinstance(crosshair, dict):
+            return dict(_DEFAULT_CROSSHAIR)
+        result = dict(_DEFAULT_CROSSHAIR)
+        for key in _DEFAULT_CROSSHAIR:
+            if key in crosshair:
+                result[key] = crosshair[key]
+        return result
+    except (json.JSONDecodeError, OSError):
+        return dict(_DEFAULT_CROSSHAIR)
+
+
+def save_crosshair_config(crosshair: dict[str, Any]) -> None:
+    """保存屏幕中心准星配置（合并写，不影响其他字段）。"""
+    data = _load_full_config()
+    data["crosshair"] = crosshair
+    config_path = _get_config_path()
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 # ---------------------------------------------------------------------------

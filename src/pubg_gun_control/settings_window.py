@@ -19,6 +19,7 @@ from pynput import keyboard, mouse
 from pynput.keyboard import Key
 from pynput.mouse import Button
 
+from pubg_gun_control.overlay_window import OverlayWindow
 from pubg_gun_control.voice_prompt import VoicePlayer
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,15 @@ _VOICE_EVENT_LABELS: dict[str, str] = {
 _ATTACH_COLS = ("muzzle", "grip", "stock")
 _ATTACH_LABELS = {"muzzle": "枪口", "grip": "握把", "stock": "枪托"}
 _AMMO_LABELS = {"7.62": "7.62mm", "5.56": "5.56mm", "9mm": "9mm", ".45": "0.45mm"}
+
+_CROSSHAIR_SHAPES: dict[str, str] = {
+    "cross": "十字",
+    "cross_dot": "十字+点",
+    "dot": "点",
+    "circle": "圆环",
+}
+_CROSSHAIR_SHAPE_REVERSE: dict[str, str] = {v: k for k, v in _CROSSHAIR_SHAPES.items()}
+_CROSSHAIR_DEFAULT_COLOR: str = "#00FF00"
 
 
 def _load_guns_from_lua(lua_path: str | None = None) -> dict[str, list[str]]:
@@ -90,12 +100,24 @@ class SettingsWindow:
         on_recognition_save: Callable[[dict], None] | None = None,
         overlay_visible: bool = True,
         recoil_hotkeys: dict[str, list[str]] | None = None,
+        overlay: OverlayWindow | None = None,
+        on_overlay_position_saved: Callable[[int, int], None] | None = None,
+        crosshair_config: dict | None = None,
+        on_crosshair_save: Callable[[dict], None] | None = None,
+        stance_config: dict | None = None,
+        on_stance_save: Callable[[dict], None] | None = None,
     ) -> None:
         self.parent = parent
         self.shortcuts = list(shortcuts)
         self.gun_attachments = dict(gun_attachments)
         self.on_save = on_save
         self.voice_player = voice_player
+        self._overlay = overlay
+        self._on_overlay_position_saved = on_overlay_position_saved
+        self._crosshair_config = crosshair_config or {}
+        self._on_crosshair_save = on_crosshair_save
+        self._stance_config = stance_config or {}
+        self._on_stance_save = on_stance_save
         self._recognition_config = recognition_config or {}
         self.on_recognition_save = on_recognition_save
         default_hotkeys: dict[str, list[str]] = {"enable": ["caps_lock", "1"], "disable": ["tab", "2", "g", "3", "4", "5"]}
@@ -118,6 +140,9 @@ class SettingsWindow:
         self.voice_enabled_var = tk.BooleanVar(value=voice_enabled)
         self.voice_volume_var = tk.IntVar(value=max(0, min(100, int(voice_volume))))
         self.overlay_visible_var = tk.BooleanVar(value=overlay_visible)
+        self.overlay_drag_var = tk.BooleanVar(
+            value=bool(overlay is not None and overlay.is_draggable())
+        )
         self._default_event_enabled = self._build_default_event_enabled(voice_event_enabled)
         self.voice_event_vars: dict[str, tk.BooleanVar] = {
             event: tk.BooleanVar(value=self._default_event_enabled.get(event, True))
@@ -175,35 +200,166 @@ class SettingsWindow:
         gun_tab = ttk.Frame(notebook, padding=8)
         rec_tab = ttk.Frame(notebook, padding=8)
         voice_tab = ttk.Frame(notebook, padding=8)
+        crosshair_tab = ttk.Frame(notebook, padding=8)
 
         notebook.add(basic_tab, text="基础")
         notebook.add(gun_tab, text="枪械")
         notebook.add(rec_tab, text="识别")
         notebook.add(voice_tab, text="语音")
+        notebook.add(crosshair_tab, text="准星")
 
         basic_tab.columnconfigure(0, weight=1)
         gun_tab.columnconfigure(0, weight=1)
         gun_tab.rowconfigure(0, weight=1)
         rec_tab.columnconfigure(0, weight=1)
         voice_tab.columnconfigure(0, weight=1)
+        crosshair_tab.columnconfigure(0, weight=1)
 
         self._create_overlay_section(basic_tab, row=0)
         self._create_recoil_hotkey_section(basic_tab, row=1)
+        self._create_stance_section(basic_tab, row=2)
         self._create_gun_section(gun_tab, row=0)
         self._create_recognition_section(rec_tab, row=0)
         self._create_voice_section(voice_tab, row=0)
+        self._create_crosshair_section(crosshair_tab, row=0)
         self._create_buttons(main_frame, row=1)
 
         self.window.protocol("WM_DELETE_WINDOW", self._on_cancel)
+
+    # ---- 姿态识别区 ----
+
+    def _create_stance_section(self, parent: ttk.Frame, row: int) -> None:
+        frame = ttk.LabelFrame(parent, text="姿态识别（站立 / 蹲下 / 趴下）", padding=5)
+        frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        frame.columnconfigure(1, weight=1)
+
+        cfg = self._stance_config
+        self.stance_enabled_var = tk.BooleanVar(value=bool(cfg.get("enabled", True)))
+        self.stance_base_var = tk.StringVar(
+            value="crouch" if str(cfg.get("base", "stand")) == "crouch" else "stand"
+        )
+        self.stance_crouch_key_var = tk.StringVar(value=str(cfg.get("crouch_key", "c")))
+        self.stance_prone_key_var = tk.StringVar(value=str(cfg.get("prone_key", "z")))
+        self.stance_break_keys_var = tk.StringVar(
+            value=", ".join(str(k) for k in (cfg.get("break_keys") or ["space"]))
+        )
+        self.stance_require_focus_var = tk.BooleanVar(
+            value=bool(cfg.get("require_focus", True))
+        )
+
+        ttk.Checkbutton(frame, text="启用姿态识别（自动切换下蹲 / 趴姿系数）",
+                        variable=self.stance_enabled_var).grid(
+            row=0, column=0, columnspan=4, sticky="w"
+        )
+
+        base_frame = ttk.Frame(frame)
+        base_frame.grid(row=1, column=0, columnspan=4, sticky="w", pady=(3, 0))
+        ttk.Label(base_frame, text="弹道表基准:").pack(side=tk.LEFT)
+        ttk.Radiobutton(base_frame, text="站立（推荐）", value="stand",
+                        variable=self.stance_base_var).pack(side=tk.LEFT, padx=(5, 0))
+        ttk.Radiobutton(base_frame, text="蹲下", value="crouch",
+                        variable=self.stance_base_var).pack(side=tk.LEFT, padx=(8, 0))
+
+        key_frame = ttk.Frame(frame)
+        key_frame.grid(row=2, column=0, columnspan=4, sticky="w", pady=(5, 0))
+        ttk.Label(key_frame, text="下蹲键:").pack(side=tk.LEFT)
+        ttk.Entry(key_frame, textvariable=self.stance_crouch_key_var, width=6,
+                  justify="center").pack(side=tk.LEFT, padx=(3, 10))
+        ttk.Label(key_frame, text="趴下键:").pack(side=tk.LEFT)
+        ttk.Entry(key_frame, textvariable=self.stance_prone_key_var, width=6,
+                  justify="center").pack(side=tk.LEFT, padx=(3, 10))
+        ttk.Label(key_frame, text="打断键:").pack(side=tk.LEFT)
+        ttk.Entry(key_frame, textvariable=self.stance_break_keys_var,
+                  width=14).pack(side=tk.LEFT, padx=(3, 0))
+
+        ttk.Checkbutton(frame, text="仅 PUBG 前台时跟踪（避免桌面打字误触发）",
+                        variable=self.stance_require_focus_var).grid(
+            row=3, column=0, columnspan=4, sticky="w", pady=(3, 0)
+        )
+
+        ttk.Label(
+            frame,
+            text="C / Z 按 Toggle 处理（按一下蹲、再按一下起）；Space 跳跃会打断蹲趴，"
+                 "多个打断键用逗号分隔，支持 pynput 键名如 space、f",
+            font=("Arial", 8), foreground="gray", wraplength=520, justify="left",
+        ).grid(row=4, column=0, columnspan=4, sticky="w", pady=(4, 0))
+
+    def _get_stance_config(self) -> dict:
+        break_keys = [
+            k.strip().lower()
+            for k in self.stance_break_keys_var.get().split(",")
+            if k.strip()
+        ]
+        return {
+            "enabled": bool(self.stance_enabled_var.get()),
+            "base": self.stance_base_var.get().strip() or "stand",
+            "crouch_key": self.stance_crouch_key_var.get().strip().lower() or "c",
+            "prone_key": self.stance_prone_key_var.get().strip().lower() or "z",
+            "break_keys": break_keys or ["space"],
+            "require_focus": bool(self.stance_require_focus_var.get()),
+        }
+
+    def _on_save_stance(self) -> None:
+        if self._on_stance_save is None:
+            return
+        self._on_stance_save(self._get_stance_config())
 
     # ---- 界面设置区 ----
 
     def _create_overlay_section(self, parent: ttk.Frame, row: int) -> None:
         frame = ttk.LabelFrame(parent, text="界面设置", padding=5)
         frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
-        ttk.Checkbutton(frame, text="显示左上角浮窗", variable=self.overlay_visible_var).grid(
+        frame.columnconfigure(1, weight=1)
+
+        ttk.Checkbutton(frame, text="显示浮窗", variable=self.overlay_visible_var).grid(
             row=0, column=0, sticky="w"
         )
+
+        ttk.Checkbutton(frame, text="解锁浮窗位置（可拖动）",
+                        variable=self.overlay_drag_var,
+                        command=self._on_overlay_drag_toggle).grid(
+            row=1, column=0, sticky="w", pady=(3, 0)
+        )
+        self._overlay_pos_label = ttk.Label(frame, text="", foreground="gray")
+        self._overlay_pos_label.grid(row=2, column=0, columnspan=2, sticky="w", pady=(3, 0))
+        self._update_overlay_pos_label()
+
+        ttk.Label(
+            frame,
+            text="勾选后可拖动左上角浮窗到任意位置；取消勾选即固定在当前位置并写入配置",
+            font=("Arial", 8), foreground="gray",
+        ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(2, 0))
+
+    def _on_overlay_drag_toggle(self) -> None:
+        """处理解锁浮窗位置开关：勾选时释放模态抓取并允许拖动，取消时固定并保存位置。"""
+        if self.overlay_drag_var.get():
+            if self._overlay is not None:
+                self.window.grab_release()
+                self._overlay.set_draggable(True)
+        else:
+            self._fix_overlay_position()
+            self.window.grab_set()
+
+    def _fix_overlay_position(self) -> None:
+        """固定浮窗当前位置并保存到配置。"""
+        if self._overlay is None:
+            return
+        self._overlay.set_draggable(False)
+        x, y = self._overlay.get_position()
+        if self._on_overlay_position_saved is not None:
+            self._on_overlay_position_saved(x, y)
+        self._update_overlay_pos_label(x, y)
+        logger.info("浮窗已固定在位置 (%d, %d)", x, y)
+
+    def _update_overlay_pos_label(self, x: int | None = None, y: int | None = None) -> None:
+        if not hasattr(self, "_overlay_pos_label"):
+            return
+        if x is None or y is None:
+            if self._overlay is not None:
+                x, y = self._overlay.get_position()
+            else:
+                x, y = 0, 0
+        self._overlay_pos_label.config(text=f"当前位置: ({x}, {y})")
 
     # ---- 压枪开关快捷键区 ----
 
@@ -606,6 +762,155 @@ class SettingsWindow:
             ttk.Spinbox(thr_frame, textvariable=var, from_=0.0, to=1.0, increment=0.05,
                         width=5, format="%.2f").grid(row=0, column=i * 2 + 1, padx=(0, 5))
 
+    # ---- 屏幕中心准星区 ----
+
+    def _create_crosshair_section(self, parent: ttk.Frame, row: int) -> None:
+        frame = ttk.LabelFrame(parent, text="屏幕中心准星", padding=5)
+        frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        frame.columnconfigure(3, weight=1)
+
+        cfg = self._crosshair_config
+        self.crosshair_enabled_var = tk.BooleanVar(value=bool(cfg.get("enabled", False)))
+        self.crosshair_mode_var = tk.StringVar(value=str(cfg.get("mode", "hold")))
+        self.crosshair_hold_key_var = tk.StringVar(value=str(cfg.get("hold_key", "shift")))
+        self.crosshair_enable_key_var = tk.StringVar(value=str(cfg.get("hotkey_enable", "1")))
+        self.crosshair_disable_key_var = tk.StringVar(value=str(cfg.get("hotkey_disable", "2")))
+        shape_key = str(cfg.get("shape", "cross"))
+        self.crosshair_shape_var = tk.StringVar(
+            value=_CROSSHAIR_SHAPES.get(shape_key, _CROSSHAIR_SHAPES["cross"])
+        )
+        color = str(cfg.get("color", _CROSSHAIR_DEFAULT_COLOR))
+        if not self._is_valid_hex_color(color):
+            color = _CROSSHAIR_DEFAULT_COLOR
+        self.crosshair_color_var = tk.StringVar(value=color)
+        self.crosshair_size_var = tk.IntVar(value=int(cfg.get("size", 40)))
+
+        ttk.Checkbutton(frame, text="启用准星（PUBG 奔跑时丢失准星点可用）",
+                        variable=self.crosshair_enabled_var).grid(
+            row=0, column=0, columnspan=4, sticky="w"
+        )
+
+        mode_row = 1
+        ttk.Label(frame, text="显示模式:").grid(row=mode_row, column=0, sticky="w")
+        ttk.Radiobutton(frame, text="常驻", value="always",
+                        variable=self.crosshair_mode_var,
+                        command=self._on_crosshair_mode_change).grid(
+            row=mode_row, column=1, sticky="w")
+        ttk.Radiobutton(frame, text="长按显示", value="hold",
+                        variable=self.crosshair_mode_var,
+                        command=self._on_crosshair_mode_change).grid(
+            row=mode_row, column=2, sticky="w", padx=(8, 0))
+
+        ttk.Label(frame, text="长按按键:").grid(row=2, column=0, sticky="w", pady=(3, 0))
+        self._crosshair_hold_key_entry = ttk.Entry(
+            frame, textvariable=self.crosshair_hold_key_var, width=10
+        )
+        self._crosshair_hold_key_entry.grid(row=2, column=1, sticky="w", pady=(3, 0))
+        self._on_crosshair_mode_change()
+
+        hotkey_frame = ttk.Frame(frame)
+        hotkey_frame.grid(row=3, column=0, columnspan=4, sticky="w", pady=(5, 0))
+        ttk.Label(hotkey_frame, text="开关快捷键:").pack(side=tk.LEFT)
+        ttk.Label(hotkey_frame, text="打开").pack(side=tk.LEFT, padx=(5, 2))
+        ttk.Entry(hotkey_frame, textvariable=self.crosshair_enable_key_var,
+                  width=6, justify="center").pack(side=tk.LEFT)
+        ttk.Label(hotkey_frame, text="关闭").pack(side=tk.LEFT, padx=(8, 2))
+        ttk.Entry(hotkey_frame, textvariable=self.crosshair_disable_key_var,
+                  width=6, justify="center").pack(side=tk.LEFT)
+
+        shape_frame = ttk.Frame(frame)
+        shape_frame.grid(row=4, column=0, columnspan=4, sticky="w", pady=(5, 0))
+        ttk.Label(shape_frame, text="形状:").pack(side=tk.LEFT)
+        self.crosshair_shape_combo = ttk.Combobox(
+            shape_frame,
+            values=list(_CROSSHAIR_SHAPES.values()),
+            textvariable=self.crosshair_shape_var,
+            width=8,
+            state="readonly",
+        )
+        self.crosshair_shape_combo.pack(side=tk.LEFT, padx=(3, 12))
+        ttk.Label(shape_frame, text="大小:").pack(side=tk.LEFT)
+        ttk.Spinbox(shape_frame, textvariable=self.crosshair_size_var,
+                    from_=10, to=120, increment=2, width=6).pack(side=tk.LEFT, padx=3)
+
+        color_frame = ttk.Frame(frame)
+        color_frame.grid(row=5, column=0, columnspan=4, sticky="w", pady=(5, 0))
+        ttk.Label(color_frame, text="颜色:").pack(side=tk.LEFT)
+        ttk.Entry(color_frame, textvariable=self.crosshair_color_var, width=10).pack(side=tk.LEFT, padx=(3, 5))
+        ttk.Button(color_frame, text="选择", width=6,
+                   command=self._choose_crosshair_color).pack(side=tk.LEFT)
+
+        preview_frame = ttk.Frame(frame)
+        preview_frame.grid(row=6, column=0, columnspan=4, sticky="w", pady=(8, 0))
+        ttk.Label(preview_frame, text="预览:").pack(side=tk.LEFT)
+        self._crosshair_preview = tk.Canvas(
+            preview_frame, width=100, height=100, bg="#010101", highlightthickness=0
+        )
+        self._crosshair_preview.pack(side=tk.LEFT, padx=5)
+
+        ttk.Label(
+            frame,
+            text="长按按键/开关快捷键支持 pynput 键名，如 shift、space、g、f1；"
+                 "游戏中按“打开”键启用准星、按“关闭”键禁用（狙击屏息时不弹准星）",
+            font=("Arial", 8), foreground="gray",
+        ).grid(row=7, column=0, columnspan=4, sticky="w", pady=(4, 0))
+
+        self.crosshair_shape_var.trace_add("write", self._on_crosshair_preview_change)
+        self.crosshair_color_var.trace_add("write", self._on_crosshair_preview_change)
+        self.crosshair_size_var.trace_add("write", self._on_crosshair_preview_change)
+        self._update_crosshair_preview()
+
+    @staticmethod
+    def _is_valid_hex_color(value: str) -> bool:
+        text = str(value).strip()
+        if not (text.startswith("#") and len(text) == 7):
+            return False
+        try:
+            int(text[1:], 16)
+            return True
+        except ValueError:
+            return False
+
+    def _on_crosshair_mode_change(self) -> None:
+        if not hasattr(self, "_crosshair_hold_key_entry"):
+            return
+        state = "normal" if self.crosshair_mode_var.get() == "hold" else "disabled"
+        self._crosshair_hold_key_entry.config(state=state)
+
+    def _on_crosshair_preview_change(self, *args) -> None:
+        self._update_crosshair_preview()
+
+    def _update_crosshair_preview(self) -> None:
+        if not hasattr(self, "_crosshair_preview"):
+            return
+        from pubg_gun_control.crosshair_window import draw_crosshair
+        color = self.crosshair_color_var.get().strip()
+        if not self._is_valid_hex_color(color):
+            color = _CROSSHAIR_DEFAULT_COLOR
+        try:
+            size = self.crosshair_size_var.get()
+        except (tk.TclError, ValueError):
+            size = 40
+        # 预览画布 100x100，等比缩小
+        preview_size = max(6, min(int(size * 0.5), 60))
+        draw_crosshair(
+            self._crosshair_preview,
+            50, 50,
+            color,
+            preview_size,
+            _CROSSHAIR_SHAPE_REVERSE.get(self.crosshair_shape_var.get(), "cross"),
+        )
+
+    def _choose_crosshair_color(self) -> None:
+        from tkinter import colorchooser
+        result = colorchooser.askcolor(
+            initialcolor=self.crosshair_color_var.get(),
+            parent=self.window,
+            title="选择准星颜色",
+        )
+        if result and result[1]:
+            self.crosshair_color_var.set(result[1])
+
     # ---- 按钮区 ----
 
     def _create_buttons(self, parent: ttk.Frame, row: int) -> None:
@@ -705,6 +1010,7 @@ class SettingsWindow:
                         coef=1.0, crouch=0.8, breath=1.3,
                         bare=1.25, full=2.0, prone=0.5,
                         scope2x=1.1, scope3x=0.7,
+                        scope4x=1.0, scope6x=1.0,
                     ))
             else:
                 if ammo in config.ammo_groups:
@@ -750,6 +1056,37 @@ class SettingsWindow:
                 "threshold_scope": round(self.threshold_scope_var.get(), 2),
             }
             self.on_recognition_save(rec_cfg)
+        self._on_save_crosshair()
+        self._on_save_stance()
+        if self.overlay_drag_var.get():
+            # 保存时若仍处于解锁拖动状态，一并固定并写入当前位置
+            self._fix_overlay_position()
+
+    def _on_save_crosshair(self) -> None:
+        if self._on_crosshair_save is None:
+            return
+        color = self.crosshair_color_var.get().strip()
+        if not self._is_valid_hex_color(color):
+            color = _CROSSHAIR_DEFAULT_COLOR
+        try:
+            size = int(self.crosshair_size_var.get())
+        except (tk.TclError, ValueError):
+            size = 40
+        shape_key = _CROSSHAIR_SHAPE_REVERSE.get(self.crosshair_shape_var.get(), "cross")
+        hold_key = self.crosshair_hold_key_var.get().strip().lower() or "shift"
+        enable_key = self.crosshair_enable_key_var.get().strip().lower()
+        disable_key = self.crosshair_disable_key_var.get().strip().lower()
+        cfg = {
+            "enabled": self.crosshair_enabled_var.get(),
+            "mode": self.crosshair_mode_var.get(),
+            "hold_key": hold_key,
+            "hotkey_enable": enable_key or "1",
+            "hotkey_disable": disable_key or "2",
+            "color": color,
+            "size": max(6, min(size, 120)),
+            "shape": shape_key,
+        }
+        self._on_crosshair_save(cfg)
 
     def _get_effective_base_lua_path(self) -> str:
         from pubg_gun_control.config_manager import load_base_lua_path
@@ -839,4 +1176,7 @@ class SettingsWindow:
             messagebox.showerror("导出失败", str(exc))
 
     def _on_cancel(self) -> None:
+        if self.overlay_drag_var.get():
+            # 取消时若浮窗仍处于解锁状态，恢复固定并保留当前位置，避免误留可点击窗口
+            self._fix_overlay_position()
         self.window.destroy()

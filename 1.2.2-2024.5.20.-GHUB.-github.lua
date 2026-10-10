@@ -83,6 +83,13 @@ userInfo = {
 	autoPressAimKey = "",
 	startControl = "capslock",	-- 启动控制 (capslock | numlock)
 	aimingSettings = "ctrlmode",
+	-- 姿态识别：自动切换 站立 / 蹲下 / 趴下 的压枪系数
+	-- enabled: false 时回退到手动修饰键（LCtrl = 蹲，LAlt = 趴）
+	-- base: 弹道表基准姿态。stand = 弹道按站立录制（推荐）；crouch = 弹道按蹲下录制（当前状态）
+	stance = {
+		enabled = true,
+		base = "crouch",
+	},
 	customAimingSettings = {
 		-- 开镜判断
 		ADS = function ()
@@ -96,30 +103,32 @@ userInfo = {
 	-- 支持的枪械，排列顺序即是配置顺序，可以自行调整。模式：0 - 不启用 | 1 - 启用 | 2 - 开启连点	系数：枪械自身系数，基于 ADS 进行调整 (ADS为全局系数，此处为自身系数)	下蹲系数：下蹲时的系数，基于 ADS 和 自身系数
 	canUse = {
 		["7.62"] = {
-			{ 	"Beryl M762",	1,	5.48,	0.82,	1.40,	1.25,	1.95,	0.30,	1.26,	0.98},
-			{ 	"AKM"       ,	1,	6.08,	0.74,	1.38,	1.25,	2.12,	0.50,	1.33,	0.98},
-			{ 	"Groza"     ,	1,	3.64,	0.70,	1.38,	1.25,	2.10,	0.50,	1.20,	0.91},
-			{ 	"ACE32"     ,	1,	5.69,	0.80,	1.50,	1.25,	2.40,	0.00,	1.25,	1.09},
-			{ 	"MK47"      ,	2,	1.00,	0.80,	1.38,	1.25,	2.60,	0.50,	1.10,	0.75},
+			{ 	"Beryl M762",	1,	2.89,	0.78,	1.40,	1.25,	1.95,	0.30,	1.39,	0.74,	1.39,	2.09},
+			{ 	"AKM"       ,	1,	3.08,	0.84,	1.38,	1.25,	2.12,	0.50,	1.37,	0.76,	1.44,	2.17},
+			{ 	"Groza"     ,	1,	1.87,	0.84,	1.38,	1.25,	2.10,	0.50,	1.45,	0.78,	1.46,	2.22},
+			{ 	"ACE32"     ,	1,	2.91,	0.84,	1.50,	1.25,	2.40,	0.00,	1.51,	0.81,	1.51,	2.32},
+			{ 	"MK47"      ,	2,	0.23,	0.88,	1.38,	1.25,	2.60,	0.50,	1.10,	0.75,	1.00,	1.00},
+			{ 	"RPD"       ,	1,	2.93,	0.80,	1.30,	1.25,	2.00,	0.30,	1.33,	0.73,	1.38,	1.89},
+			{ 	"MG3"       ,	1,	1.10,	0.50,	1.38,	1.25,	2.60,	0.40,	1.28,	0.67,	1.20,	1.50},
 		},
 		["5.56"] = {
-			{ 	"AUG"   ,	1,	5.11,	0.80,	1.30,	1.90,	4.40,	0.50,	1.25,	0.95},
-			{ 	"M416"  ,	1,	6.75,	0.80,	1.38,	2.50,	4.64,	0.50,	1.19,	0.95},
-			{ 	"P90"   ,	1,	3.95,	0.85,	1.38,	1.25,	2.60,	0.50,	1.15,	0.70},
-			{ 	"M249"  ,	1,	3.25,	0.80,	1.38,	1.25,	2.60,	0.50,	1.35,	1.10},
-			{ 	"M16A4" ,	2,	1.50,	0.80,	1.38,	1.25,	3.20,	0.50,	1.15,	0.70},
-			{ 	"SCAR-L",	1,	4.31,	0.88,	1.38,	1.25,	2.70,	0.50,	1.35,	0.95},
-			{ 	"QBZ"   ,	1,	4.31,	0.80,	1.38,	1.25,	2.60,	0.50,	1.35,	0.95},
-			{ 	"G36C"  ,	1,	4.31,	0.80,	1.38,	1.25,	2.60,	0.50,	1.10,	0.82},
-			{ 	"Famas" ,	1,	3.11,	0.80,	1.30,	1.90,	4.40,	0.50,	0.92,	1.23},
-			{ 	"k2"    ,	1,	5.08,	0.80,	1.30,	1.25,	2.00,	0.50,	1.33,	0.98},
+			{ 	"AUG"   ,	1,	2.43,	0.86,	1.30,	1.90,	4.40,	0.50,	1.43,	0.81,	1.56,	2.33},
+			{ 	"M416"  ,	1,	3.45,	0.84,	1.38,	2.50,	4.64,	0.50,	1.40,	0.77,	1.50,	2.21},
+			{ 	"P90"   ,	1,	2.30,	0.85,	1.38,	1.25,	2.60,	0.50,	1.15,	0.70,	1.00,	1.00},
+			{ 	"M249"  ,	1,	0.81,	0.80,	1.38,	1.25,	2.60,	0.40,	1.35,	0.74,	1.35,	1.86},
+			{ 	"M16A4" ,	2,	1.50,	0.84,	1.38,	1.25,	3.20,	0.50,	1.15,	0.70,	1.00,	1.00},
+			{ 	"SCAR-L",	1,	2.43,	0.84,	1.38,	1.25,	2.70,	0.50,	1.46,	0.81,	1.53,	2.30},
+			{ 	"QBZ"   ,	1,	2.31,	0.84,	1.38,	1.25,	2.60,	0.50,	1.51,	0.81,	1.50,	2.32},
+			{ 	"G36C"  ,	1,	2.29,	0.84,	1.38,	1.25,	2.60,	0.50,	1.43,	0.79,	1.50,	2.25},
+			{ 	"Famas" ,	1,	1.66,	0.84,	1.30,	1.90,	4.40,	0.50,	1.41,	0.78,	1.00,	2.15},
+			{ 	"k2"    ,	1,	2.51,	0.84,	1.30,	1.25,	2.00,	0.50,	1.35,	0.79,	1.50,	2.36},
 		},
 		["9mm"] = {
-			{ 	"Tommy Gun",	1,	3.40,	0.80,	1.38,	1.25,	2.60,	0.50,	1.10,	1.70},
-			{ 	"Vector"   ,	1,	6.15,	0.80,	1.38,	1.25,	2.60,	0.50,	1.10,	0.85},
-			{ 	"Micro UZI",	1,	1.40,	0.80,	1.38,	1.25,	2.60,	0.50,	1.10,	0.70},
-			{ 	"UMP45"    ,	1,	3.45,	0.80,	1.30,	1.25,	4.90,	0.50,	1.35,	0.90},
-			{ 	"MP5K"     ,	1,	4.10,	0.80,	1.20,	1.25,	6.90,	0.50,	1.20,	0.70},
+			{ 	"Tommy Gun",	1,	1.75,	1.00,	1.38,	1.25,	2.60,	0.50,	1.10,	1.70,	1.00,	1.00},
+			{ 	"Vector"   ,	1,	3.15,	1.00,	1.38,	1.25,	2.60,	0.50,	1.50,	0.85,	1.55,	2.30},
+			{ 	"Micro UZI",	1,	0.93,	1.00,	1.38,	1.25,	2.60,	0.50,	1.10,	0.70,	1.00,	1.00},
+			{ 	"UMP45"    ,	1,	1.84,	1.00,	1.30,	1.25,	4.90,	0.50,	1.35,	0.77,	1.50,	2.04},
+			{ 	"MP5K"     ,	1,	1.93,	1.00,	1.20,	1.25,	6.90,	0.50,	1.50,	0.82,	1.49,	2.36},
 		},
 	},
 
@@ -163,6 +172,7 @@ pubg = {
 	G1 = false, -- G1键状态
 	currentTime = 0, -- 此刻
 	bulletIndex = 0, -- 第几颗子弹
+	currentStance = "stand", -- 当前姿态：stand | crouch | prone
 	-- 配件状态 (索引，1 = 第一个选项)
 	muzzleIndex = 1,
 	gripIndex = 1,
@@ -276,7 +286,9 @@ function pubg.execOptions (gunName, options)
 		ManpeiRatio = gunInfo[7],
 		PaziRatio = gunInfo[8],
 		scopeX2Ratio = gunInfo[9],
-		scopeX3Ratio = gunInfo[10]
+		scopeX3Ratio = gunInfo[10],
+		scopeX4Ratio = gunInfo[11] or 1,
+		scopeX6Ratio = gunInfo[12] or 1
 	}
 
 end
@@ -338,6 +350,9 @@ function pubg.auto (options)
 	pubg.bulletIndex = math.ceil(((pubg.currentTime - pubg.startTime == 0 and {1} or {pubg.currentTime - pubg.startTime})[1]) / options.interval) + 1
 
 	if pubg.bulletIndex > options.amount then return false end
+	-- 每发刷新姿态，开火途中跳起 / 蹲下也能跟上
+	pubg.currentStance = pubg.readStance()
+
 	-- Developer Debugging Mode
 	local d = (IsKeyLockOn("scrolllock") and { (pubg.bulletIndex - 1) * pubg.xLengthForDebug } or { 0 })[1]
 	local x = math.ceil((pubg.currentTime - pubg.startTime) / (options.interval * (pubg.bulletIndex - 1)) * d) - pubg.xCounter
@@ -383,6 +398,32 @@ function pubg.autoSleep (isTest)
 	Sleep(random)
 end
 
+--[[ 读取当前姿态 stand | crouch | prone ]]
+-- 只做文本解析、不执行文件，避免每发子弹都编译一次 lua
+function pubg.readStance ()
+	local stanceCfg = userInfo.stance
+	if not stanceCfg or not stanceCfg.enabled then return "stand" end
+	-- 首选：直接读 loadRecResult() 注入的全局变量。
+	-- GHUB 的 Lua 沙箱常常没有 io 库，走 io.open 会直接返回 nil 让姿态识别整体失效
+	if type(rec_stance) == "string" then
+		if rec_stance == "crouch" or rec_stance == "prone" then return rec_stance end
+		return "stand"
+	end
+	-- 兜底：io 可用时解析文件（不执行、开销更低）
+	if not REC_PATH then return nil end
+	if not (io and io.open) then return nil end
+
+	local f = io.open(REC_PATH, "r")
+	if not f then return nil end
+	local content = f:read("*a")
+	f:close()
+	if not content then return nil end
+
+	local value = string.match(content, "rec_stance%s*=%s*\"(%a+)\"")
+	if value == "crouch" or value == "prone" then return value end
+	return "stand"
+end
+
 --[[ get real y position ]]
 function pubg.getRealY (options, y)
 	local realY = y
@@ -395,12 +436,53 @@ function pubg.getRealY (options, y)
 			realY = realY * options.scopeX2Ratio
 		elseif pubg.scope_current == "scopeX3" and options.scopeX3Ratio then
 			realY = realY * options.scopeX3Ratio
+		elseif pubg.scope_current == "scopeX4" and options.scopeX4Ratio then
+			realY = realY * options.scopeX4Ratio
+		elseif pubg.scope_current == "scopeX6" and options.scopeX6Ratio then
+			realY = realY * options.scopeX6Ratio
 		end
 	end
--- 下蹲压枪
-	if userInfo.aimingSettings == "ctrlmode" and IsModifierPressed("lctrl") then
-		realY = realY * options.ctrlmodeRatio
+-- 姿态压枪（站立 / 蹲下 / 趴下）
+-- 优先用自动识别结果；关闭姿态识别时回退到手动修饰键（LCtrl 蹲 / LAlt 趴）
+	local crouchRatio = options.ctrlmodeRatio or 1
+	local proneRatio = options.PaziRatio or 1
+	if crouchRatio <= 0.01 then crouchRatio = 1 end
+	if proneRatio <= 0.01 then proneRatio = 1 end -- 0 会让压枪量归零，按"无减免"处理
+	local stanceRatio = 1
+	local stanceCfg = userInfo.stance
+	if stanceCfg and stanceCfg.enabled and pubg.currentStance then
+		if (stanceCfg.base or "stand") == "crouch" then
+			-- 弹道表以蹲下为基准，站立需要反向放大补偿
+			if pubg.currentStance == "stand" then
+				stanceRatio = 1 / crouchRatio
+			elseif pubg.currentStance == "prone" then
+				stanceRatio = proneRatio / crouchRatio
+			end
+		else
+			if pubg.currentStance == "crouch" then
+				stanceRatio = crouchRatio
+			elseif pubg.currentStance == "prone" then
+				stanceRatio = proneRatio
+			end
+		end
+	elseif userInfo.aimingSettings == "ctrlmode" then
+		-- 走到这里说明自动姿态识别没生效（只警告一次，避免刷屏）
+		if not pubg.stanceFallbackWarned then
+			pubg.stanceFallbackWarned = true
+			OutputLogMessage(
+				"[STANCE] 警告：自动姿态不可用，已回退手动修饰键(LCtrl=蹲/LAlt=趴)，"
+				.. "调下蹲系数无效。stance=%s, REC_PATH=%s, currentStance=%s\n",
+				tostring(userInfo.stance), tostring(REC_PATH), tostring(pubg.currentStance)
+			)
+		end
+		if IsModifierPressed("lalt") then
+			stanceRatio = proneRatio
+		elseif IsModifierPressed("lctrl") then
+			stanceRatio = crouchRatio
+		end
 	end
+	realY = realY * stanceRatio
+	pubg.lastStanceRatio = stanceRatio -- 供 autoLog 打印，方便肉眼核对姿态是否生效
 -- 屏息压枪
 	if userInfo.aimingSettings == "ctrlmode" and IsModifierPressed("lshift") then
 		realY = realY * options.BreathRatio
@@ -415,10 +497,6 @@ function pubg.getRealY (options, y)
 			stockRatio = attachmentConfig.stock[pubg.stockIndex].ratio
 		end
 		realY = realY * muzzleRatio * gripRatio * stockRatio
-	end
--- 趴姿压枪
-	if userInfo.aimingSettings == "ctrlmode" and IsModifierPressed("lalt") then
-		realY = realY * options.PaziRatio
 	end
 
 	return math.round(realY)
@@ -1113,6 +1191,11 @@ function pubg.autoLog (options, y, realY)
 		"----------------------------------- Automatically counteracting gun recoil -----------------------------------\n",
 		"------------------------------------------------------------------------------------------------------------------------------\n",
 		"scope: ", pubg.scope_current, " (", scopeVal, ") | ADS: ", tostring(adsDetected), " | y: ", y, " | realY: ", realY, "\n",
+		"stance: ", tostring(pubg.currentStance), " | enabled=", tostring(userInfo.stance and userInfo.stance.enabled),
+		" | base=", tostring(userInfo.stance and userInfo.stance.base),
+		" | ratio=", tostring(pubg.lastStanceRatio),
+		" | rec_stance=", tostring(rec_stance),
+		" | io=", tostring(io ~= nil and io.open ~= nil), "\n",
 		"bullet index: ", pubg.bulletIndex, "    target counter: ", options.ballistic[pubg.bulletIndex], "    current counter: ", pubg.counter, "\n",
 		"D-value(target - current): ", options.ballistic[pubg.bulletIndex], " - ", pubg.counter, " = ", options.ballistic[pubg.bulletIndex] - pubg.counter, "\n",
 		"move: math.ceil((", pubg.currentTime, " - ", pubg.startTime, ") / (", options.interval, " * (", pubg.bulletIndex, " - 1)) * ", options.ballistic[pubg.bulletIndex], ") - ", pubg.counter, " = ", y, "\n",
@@ -1361,7 +1444,7 @@ pubg.init() -- Script initialization
 pubg["Beryl M762"] = function (gunName)
 
 	return pubg.execOptions(gunName, {
-		interval = 87,
+		interval = 88,
 		ballistic = {
 			{1, 0.0},
 			{2, 38.0},
@@ -1398,12 +1481,12 @@ pubg["Beryl M762"] = function (gunName)
 			{33, 40.0},
 			{34, 39.0},
 			{35, 39.0},
-			{36, 40.0},
-			{37, 38.0},
-			{38, 40.0},
-			{39, 40.0},
-			{40, 39.0},
-			{42, 41.0},
+			{36, 41.0},
+			{37, 42.0},
+			{38, 42.0},
+			{39, 42.0},
+			{40, 42.0},
+			{42, 42.0},
 		}
 	})
 
@@ -1560,10 +1643,68 @@ pubg["MK47"] = function (gunName)
 
 end
 
+pubg["RPD"] = function (gunName)
+
+	return pubg.execOptions(gunName, {
+		interval = 80,
+		ballistic = {
+			{1, 0.0},
+			{2, 10.0},
+			{3, 12.0},
+			{6, 15.0},
+			{8, 18.0},
+			{10, 21.0},
+			{16, 20.0},
+			{25, 16.0},
+			{30, 16.0},
+			{40, 16.0},
+			{50, 16.0},
+			{60, 16.0},
+			{75, 16.0},
+			{80, 16.0},
+			{85, 18.0},
+			{86, 19.0},
+			{87, 19.0},
+			{88, 19.0},
+			{89, 19.0},
+			{90, 18.0},
+			{91, 19.0},
+			{93, 20.0},
+			{95, 20.0},
+			{96, 20.0},
+			{98, 20.0},
+			{100, 20.0},
+			{105, 20.0},
+			{110, 20.0},
+		}
+	})
+
+end
+
+pubg["MG3"] = function (gunName)
+
+	return pubg.execOptions(gunName, {
+		interval = 81,
+		ballistic = {
+			{1, 0.0},
+			{2, 42.0},
+			{3, 12.0},
+			{6, 15.0},
+			{8, 23.0},
+			{10, 25.0},
+			{16, 23.0},
+			{25, 16.0},
+			{50, 20.0},
+			{75, 20.0},
+		}
+	})
+
+end
+
 pubg["AUG"] = function (gunName)
 
 	return pubg.execOptions(gunName, {
-		interval = 85,
+		interval = 86,
 		ballistic = {
 			{1, 0.0},
 			{2, 17.0},
@@ -1602,11 +1743,11 @@ pubg["AUG"] = function (gunName)
 			{35, 37.0},
 			{36, 38.0},
 			{37, 38.0},
-			{38, 38.0},
-			{39, 36.0},
-			{40, 38.0},
-			{41, 38.0},
-			{42, 38.0},
+			{38, 39.0},
+			{39, 39.0},
+			{40, 39.0},
+			{41, 39.0},
+			{42, 39.0},
 		}
 	})
 
@@ -1688,15 +1829,16 @@ end
 pubg["M249"] = function (gunName)
 
 	return pubg.execOptions(gunName, {
-		interval = 222,
+		interval = 75,
 		ballistic = {
 			{1, 0.0},
 			{2, 40.0},
 			{5, 50.0},
 			{10, 45.0},
 			{15, 55.0},
-			{20, 70.0},
-			{75, 76.0},
+			{20, 55.0},
+			{75, 55.0},
+			{150, 55.0},
 		}
 	})
 
@@ -1776,7 +1918,7 @@ end
 pubg["Famas"] = function (gunName)
 
 	return pubg.execOptions(gunName, {
-		interval = 65,
+		interval = 67,
 		ballistic = {
 			{1, 0.0},
 			{2, 33.0},
@@ -1787,8 +1929,8 @@ pubg["Famas"] = function (gunName)
 			{20, 37.0},
 			{25, 39.0},
 			{30, 41.0},
-			{35, 41.0},
-			{40, 42.0},
+			{35, 39.0},
+			{40, 39.0},
 		}
 	})
 

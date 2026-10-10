@@ -11,11 +11,14 @@
 import ctypes
 import logging
 import time
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from pynput import keyboard, mouse
 from pynput.keyboard import Key
 from pynput.mouse import Button
+
+if TYPE_CHECKING:
+    from pubg_gun_control.stance_tracker import StanceTracker
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +29,10 @@ _BUTTON_MAP: dict[str, Button] = {
 }
 
 _BUTTON_REVERSE_MAP: dict[Button, str] = {v: k for k, v in _BUTTON_MAP.items()}
+
+# char 为 None 时按虚拟键码兜底：A-Z -> a-z，0-9 -> "0".."9"
+_VK_NAME_MAP: dict[int, str] = {code: chr(code + 32) for code in range(65, 91)}
+_VK_NAME_MAP.update({code: chr(code) for code in range(48, 58)})
 
 _CAPS_LOCK_IGNORE_SECONDS = 0.3
 
@@ -86,13 +93,33 @@ class InputListener:
         gun_attachments: dict[str, dict[str, bool]] | None = None,
         voice_callback: Callable[[str], None] | None = None,
         recoil_hotkeys: dict[str, str] | None = None,
+        recognition_hotkey: str = "f2",
+        on_recognition_trigger: Callable[[str], None] | None = None,
+        crosshair_hold_key: str = "",
+        crosshair_show_callback: Callable[[], None] | None = None,
+        crosshair_hide_callback: Callable[[], None] | None = None,
+        crosshair_enable_key: str = "",
+        crosshair_disable_key: str = "",
+        crosshair_enable_callback: Callable[[], None] | None = None,
+        crosshair_disable_callback: Callable[[], None] | None = None,
+        stance_tracker: "StanceTracker | None" = None,
     ) -> None:
         self.callback = callback
+        self.stance_tracker = stance_tracker
         self.lock_callback = lock_callback
         self.scope_callback = scope_callback
         self.attachment_callback = attachment_callback
         self.reset_callback = reset_callback
         self.voice_callback = voice_callback
+        self._recognition_hotkey: str = recognition_hotkey.strip().lower() if recognition_hotkey else ""
+        self._on_recognition_trigger = on_recognition_trigger
+        self._crosshair_hold_key: str = crosshair_hold_key.strip().lower() if crosshair_hold_key else ""
+        self._crosshair_show_callback = crosshair_show_callback
+        self._crosshair_hide_callback = crosshair_hide_callback
+        self._crosshair_enable_key: str = crosshair_enable_key.strip().lower() if crosshair_enable_key else ""
+        self._crosshair_disable_key: str = crosshair_disable_key.strip().lower() if crosshair_disable_key else ""
+        self._crosshair_enable_callback = crosshair_enable_callback
+        self._crosshair_disable_callback = crosshair_disable_callback
         self.keyboard_listener: keyboard.Listener | None = None
         self.mouse_listener: mouse.Listener | None = None
 
@@ -148,6 +175,50 @@ class InputListener:
             "enable": [str(k).strip().lower() for k in recoil_hotkeys.get("enable", ["caps_lock", "1"]) if str(k).strip()],
             "disable": [str(k).strip().lower() for k in recoil_hotkeys.get("disable", ["tab", "2", "g", "3", "4", "5"]) if str(k).strip()],
         }
+
+    def update_recognition_hotkey(self, hotkey: str) -> None:
+        """更新识别快捷键。"""
+        self._recognition_hotkey = hotkey.strip().lower() if hotkey else ""
+
+    def update_crosshair_hold_key(self, key: str) -> None:
+        """更新准星长按显示按键，空串表示不监听。"""
+        self._crosshair_hold_key = key.strip().lower() if key else ""
+
+    def update_crosshair_hotkeys(self, enable_key: str, disable_key: str) -> None:
+        """更新准星开关快捷键（打开/关闭），空串表示不监听。"""
+        self._crosshair_enable_key = enable_key.strip().lower() if enable_key else ""
+        self._crosshair_disable_key = disable_key.strip().lower() if disable_key else ""
+
+    @staticmethod
+    def _matches_defined_key(name: str | None, target: str) -> bool:
+        """判断按键名是否匹配目标按键，'shift' 同时匹配左右 Shift。"""
+        if not name or not target:
+            return False
+        if name == target:
+            return True
+        return target == "shift" and name in ("shift_l", "shift_r", "shift")
+
+    def _handle_crosshair_hold(self, key: Key | keyboard.KeyCode | None, pressed: bool) -> None:
+        if not self._crosshair_hold_key:
+            return
+        callback = self._crosshair_show_callback if pressed else self._crosshair_hide_callback
+        if callback is None:
+            return
+        name = self._key_to_hotkey_name(key)
+        if self._matches_defined_key(name, self._crosshair_hold_key):
+            callback()
+
+    def _handle_crosshair_hotkey(self, key: Key | keyboard.KeyCode | None) -> None:
+        """处理准星开/关快捷键：按下打开键启用，按下关闭键禁用。"""
+        name = self._key_to_hotkey_name(key)
+        if not name:
+            return
+        if self._crosshair_enable_callback is not None and self._crosshair_enable_key \
+                and self._matches_defined_key(name, self._crosshair_enable_key):
+            self._crosshair_enable_callback()
+        elif self._crosshair_disable_callback is not None and self._crosshair_disable_key \
+                and self._matches_defined_key(name, self._crosshair_disable_key):
+            self._crosshair_disable_callback()
 
     def _enable_recoil(self) -> None:
         """开启压枪模式并同步 CapsLock 状态。"""
@@ -237,6 +308,22 @@ class InputListener:
             return key.char.lower()
         return None
 
+    def _stance_key_name(self, key: Key | keyboard.KeyCode | None) -> str | None:
+        """姿态跟踪用的按键名。
+
+        游戏全屏 / 中文输入法活跃时，字符键的 char 可能为 None，
+        此时用虚拟键码兜底，否则 C / Z 完全识别不到。
+        press 与 release 必须用同一个名字，否则 _held 清不掉，
+        导致只能翻转一次、之后再按无反应。
+        """
+        name = self._key_to_hotkey_name(key)
+        if name:
+            return name
+        vk = getattr(key, "vk", None)
+        if vk is not None:
+            return _VK_NAME_MAP.get(vk)
+        return None
+
     def _handle_recoil_hotkey(self, hotkey_name: str) -> bool:
         """根据配置处理压枪开关热键，返回是否命中。"""
         if not hotkey_name:
@@ -268,6 +355,11 @@ class InputListener:
 
     def _on_key_press(self, key: Key | keyboard.KeyCode | None) -> None:
         try:
+            # 姿态跟踪必须放在最前：C/Z 不是修饰键，后面的分支会提前 return
+            if self.stance_tracker is not None:
+                self.stance_tracker.on_press(self._stance_key_name(key))
+            self._handle_crosshair_hold(key, pressed=True)
+            self._handle_crosshair_hotkey(key)
             if key == Key.alt_l or key == Key.alt:
                 self.alt_pressed = True
                 if self.ctrl_pressed and self.win_pressed:
@@ -291,13 +383,26 @@ class InputListener:
                     self._do_reset()
             else:
                 hotkey_name = self._key_to_hotkey_name(key)
-                if hotkey_name and self._handle_recoil_hotkey(hotkey_name):
+                if not hotkey_name:
+                    return
+                # 识别快捷键（如 F2）：触发即时识别，不走压枪逻辑
+                if hotkey_name == self._recognition_hotkey and self._on_recognition_trigger:
+                    self._on_recognition_trigger("hotkey")
+                    return
+                # Tab 键：触发延时识别，同时继续走压枪关闭逻辑
+                # （Tab 在 disable 列表中，开物品栏时关闭压枪是合理行为）
+                if hotkey_name == "tab" and self._on_recognition_trigger:
+                    self._on_recognition_trigger("tab")
+                if self._handle_recoil_hotkey(hotkey_name):
                     return
         except AttributeError:
             pass
 
     def _on_key_release(self, key: Key | keyboard.KeyCode | None) -> None:
         try:
+            if self.stance_tracker is not None:
+                self.stance_tracker.on_release(self._stance_key_name(key))
+            self._handle_crosshair_hold(key, pressed=False)
             if key == Key.alt_l or key == Key.alt:
                 self.alt_pressed = False
             elif key == Key.alt_r or key == Key.alt_gr:
