@@ -32,6 +32,10 @@ jobs:
         run: |
           uv sync --dev
 
+      - name: Run tests
+        run: |
+          uv run pytest test/ -q
+
       - name: Build with PyInstaller
         run: |
           uv run pyinstaller pubg_gun_control.spec --clean
@@ -43,11 +47,39 @@ jobs:
           path: dist/PUBG-Gun-Control.exe
           retention-days: 30
 
+      - name: Package templates
+        run: |
+          # recognizer.py 在打包模式下从 exe 同级目录读取 templates/，
+          # 因此模板需作为独立附件随 exe 一同发布，否则用户无法直接使用 F2 自动识别
+          Compress-Archive -Path templates -DestinationPath templates.zip -Force
+          Get-ChildItem templates | Select-Object -ExpandProperty Name | Out-File templates-manifest.txt -Encoding utf8
+
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/PUBG-Gun-Control.exe
+          files: |
+            dist/PUBG-Gun-Control.exe
+            templates.zip
+            templates-manifest.txt
           generate_release_notes: true
+          body: |
+            ## 使用说明
+
+            1. 将 `PUBG-Gun-Control.exe` 与 `templates.zip` 解压到**同一目录**
+            2. 结构应为：
+               ```
+               PUBG-Gun-Control.exe
+               templates/
+                 ├── guns/
+                 ├── muzzle/
+                 ├── grip/
+                 ├── stock/
+                 └── scope/
+               ```
+            3. 双击运行 exe，通过托盘菜单完成 ROI 框选与基础脚本路径配置
+
+            > `templates/` 必须与 exe 同级，程序不会从 exe 内部解压读取。
+            > 若不需要自动识别功能，可删除 `templates/` 目录，仅使用手动组合键切换。
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

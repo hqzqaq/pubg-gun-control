@@ -377,7 +377,24 @@ uv run python main.py
 uv run pyinstaller pubg_gun_control.spec --clean
 ```
 
-打包后的文件位于 `dist/PUBG-Gun-Control/` 目录。右键 `PUBG-Gun-Control.exe` → "以管理员身份运行"。
+打包产物是**单个 exe**，位于 `dist/PUBG-Gun-Control.exe`。右键 → "以管理员身份运行"。
+
+> **重要**：exe 模式下程序从**exe 同级目录**读取 `templates/`，不会从 exe 内部解压。
+> 若要使用 F2 自动识别，需手动把仓库中的 `templates/` 目录放到 exe 旁边：
+>
+> ```
+> PUBG-Gun-Control.exe
+> templates/
+>   ├── guns/
+>   ├── muzzle/
+>   ├── grip/
+>   ├── stock/
+>   └── scope/
+> ```
+>
+> 从 [Releases](https://github.com/hqzqaq/pubg-gun-control/releases) 下载时，
+> `templates.zip` 与 exe 一并提供，解压到同一目录即可。
+> 不使用自动识别功能的话，可直接删除 `templates/` 目录，仅用组合键切换枪械。
 
 <!-- 截图：右键管理员身份运行 -->
 
@@ -1028,7 +1045,7 @@ uv run python diagnose_stance.py
 uv run pyinstaller pubg_gun_control.spec --clean
 ```
 
-打包后的文件位于 `dist/PUBG-Gun-Control/` 目录。
+打包产物是**单个 exe**（`dist/PUBG-Gun-Control.exe`），运行时需从 exe 同级目录读取 `templates/`（原因见 [步骤 6.1](#61-启动程序)）。
 
 ### GitHub Actions 自动构建
 
